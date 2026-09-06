@@ -1,0 +1,169 @@
+;$('purchaseDate').value=s.purchase.date;
+ $('hornBatches').value=s.planning.hornBatches;$('cookieBatches').value=s.planning.cookieBatches;$('cookieKg').value=s.planning.cookieKg;$('chocPerKg').value=s.planning.chocPerKg;renderNeeds();
+ $('yearText').textContent=s.year;
+ $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('famKpi').textContent=eur(profit()/2);
+ const st=saleTotals();$('cookieHome').textContent=st.cookie;$('hornHome').textContent=st.horn;$('mixedHome').textContent=st.mixed;
+ $('cookieHomeRev').textContent=eur(cookieRevenue())+' Umsatz';$('hornHomeRev').textContent=eur(hornRevenue())+' Umsatz';$('mixedHomeRev').textContent=eur(mixedRevenue())+' Umsatz';
+ $('ovenWatts').value=s.oven.watts;$('powerPrice').value=s.powerPrice;
+ $('settingCookiePrice').value=s.salePrices.cookie;$('settingHornPrice').value=s.salePrices.horn;$('settingMixedPrice').value=s.salePrices.mixed;
+ $('ironCount').value=s.iron.count;$('ironPower').textContent=(s.iron.count*s.iron.wattsEach).toLocaleString('de-DE')+' W';
+ $('ovenTimer').textContent=fmt(elapsed(s.oven));$('ironTimer').textContent=fmt(elapsed(s.iron));
+ $('ovenKwh').textContent=kwh(s.oven,'oven').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('ironKwh').textContent=kwh(s.iron,'iron').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));
+ $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;
+ $('year').value=s.year;$('family1').value=s.family1;$('family2').value=s.family2;
+ $('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit';
+ $('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit';
+ const today=new Date().toISOString().slice(0,10);
+ const todayManual=(s.energyLogs||[]).filter(x=>x.date===today).reduce((a,l)=>a+energyLogCost(l),0);
+ $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0));
+ $('homeBuckets').textContent=st.cookie+st.horn+st.mixed;
+ $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!x.done&&n(x.qty)>0).length;
+ renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderCharts();renderYearComparison();renderShop()
+}
+function updateShop(e){
+ const i=Number(e.target.dataset.i),a=e.target.dataset.action;if(!Number.isInteger(i)||!a)return;
+ const item=s.shopping[i]; if(!item)return;
+ if(item.unitPrice===undefined)item.unitPrice=(n(item.qty)>0?n(item.cost)/n(item.qty):0);
+ if(a==='del'){s.shopping.splice(i,1)}
+ else if(a==='done'){item.done=e.target.checked}
+ else if(a==='name'){item.name=e.target.value}
+ else if(a==='plus'){item.qty=Math.max(0,Math.round(n(item.qty)))+1;item.done=false}
+ else if(a==='minus'){item.qty=Math.max(0,Math.round(n(item.qty))-1)}
+ else if(a==='unitPrice'){item.unitPrice=n(e.target.value);item.cost=item.qty*item.unitPrice}
+ save();
+ if(['done','del','plus','minus'].includes(a))render();else{
+   $('costKpi').textContent=eur(shopTotal());if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
+ }
+}
+if($('homeShopList')){$('homeShopList').addEventListener('change',updateShop);$('homeShopList').addEventListener('input',updateShop);$('homeShopList').addEventListener('click',updateShop);}
+$('fullShopList').addEventListener('change',updateShop);$('fullShopList').addEventListener('input',updateShop);$('fullShopList').addEventListener('click',updateShop);
+$('baseIngredients').onclick=e=>{if(e.target.dataset.bi!==undefined){s.shopping.splice(Number(e.target.dataset.bi),1);save();render()}};
+
+function openPage(button){
+ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+ button.classList.add('active');
+ const target=$(button.dataset.page);
+ if(target) target.classList.add('active');
+}
+document.querySelectorAll('.tab').forEach(b=>{
+ b.addEventListener('click',()=>openPage(b));
+});
+for(let i=1;i<=12;i++){ $('ironCount').insertAdjacentHTML('beforeend',`<option value="${i}">${i} Eisen</option>`); $('logIronCount').insertAdjacentHTML('beforeend',`<option value="${i}">${i}</option>`); }
+
+function addItem(){
+ const name=$('newName').value.trim()||'Neuer Artikel';
+ s.shopping.push({name,qty:1,unit:'Stück',unitPrice:n($('newCost').value),cost:n($('newCost').value),done:false});
+ ['newName','newCost'].forEach(id=>$(id).value='');save();render();
+}
+$('addShop').onclick=addItem;
+if($('homeAdd'))$('homeAdd').onclick=()=>{openPage(document.querySelector('[data-page="shop"]'));$('newName').focus()};
+
+function bind(id,fn){$(id).addEventListener('input',e=>{fn(e.target.value);save();render()})}
+
+$('activeYearSelect').onchange=e=>switchYear(e.target.value);
+$('compareYearSelect').onchange=e=>{compareYear=Number(e.target.value);renderYearComparison()};
+
+$('buyer').onchange=e=>{s.purchase.buyer=e.target.value;save()};bind('store',v=>s.purchase.store=v);bind('purchaseDate',v=>s.purchase.date=v);
+bind('hornBatches',v=>s.planning.hornBatches=n(v));bind('cookieBatches',v=>s.planning.cookieBatches=n(v));bind('cookieKg',v=>s.planning.cookieKg=n(v));bind('chocPerKg',v=>s.planning.chocPerKg=n(v));
+$('toShopping').onclick=()=>{recipeNeeds().filter(x=>!x.notShopping).forEach(r=>{let q=s.shopping.find(x=>x.name===r.name);if(q){q.done=false}else{s.shopping.push({name:r.name,qty:0,unit:'Stück',unitPrice:0,cost:0,done:false})}});save();render();openPage(document.querySelector('[data-page="shop"]'))};
+
+bind('family1',v=>s.family1=v);bind('family2',v=>s.family2=v);
+bind('powerPrice',v=>s.powerPrice=n(v));
+bind('settingCookiePrice',v=>s.salePrices.cookie=n(v));
+bind('settingHornPrice',v=>s.salePrices.horn=n(v));
+bind('settingMixedPrice',v=>s.salePrices.mixed=n(v));
+bind('ovenWatts',v=>s.oven.watts=n(v));
+$('ironCount').onchange=e=>{s.iron.count=Number(e.target.value);save();render()};
+
+function two(v){return String(v).padStart(2,'0')}
+function localDateTime(ms){
+ const d=new Date(ms);
+ return {date:`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`,time:`${two(d.getHours())}:${two(d.getMinutes())}`};
+}
+function stopAndArchiveEnergy(device){
+ const d=device==='iron'?s.iron:s.oven;
+ if(!d.running)return;
+ const started=d.startAt||Date.now(),ended=Date.now();
+ const a=localDateTime(started),b=localDateTime(ended);
+ s.energyLogs=s.energyLogs||[];
+ s.energyLogs.push({
+   device,date:a.date,start:a.time,end:b.time,
+   ironCount:device==='iron'?(n(d.count)||1):undefined,
+   watts:device==='iron'?(n(d.count)||1)*n(d.wattsEach):n(d.watts),
+   powerPrice:n(s.powerPrice),
+   createdAt:new Date().toISOString()
+ });
+ d.running=false;d.startAt=null;d.elapsed=0;
+}
+
+$('ovenStart').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.startAt=Date.now();save();render()}};
+$('ovenStop').onclick=()=>{stopAndArchiveEnergy('oven');save();render()};$('ovenReset').onclick=()=>{if(confirm('Backofen-Zeit auf 0 setzen?')){s.oven.elapsed=0;s.oven.running=false;s.oven.startAt=null;save();render()}};
+$('ironStart').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save();render()}};
+$('ironStop').onclick=()=>{stopAndArchiveEnergy('iron');save();render()};$('ironReset').onclick=()=>{if(confirm('Hörncheneisen-Zeit auf 0 setzen?')){s.iron.elapsed=0;s.iron.running=false;s.iron.startAt=null;save();render()}};
+
+
+
+fillSaleDates();
+function changeProduction(kind,delta){
+ s.production=s.production||{cookie:0,horn:0,mixed:0};
+ const sold=stockTotals().sold[kind]||0;
+ const next=Math.max(0,Math.round(n(s.production[kind]))+delta);
+ if(next<sold)return alert('Produzierte Eimer können nicht unter die bereits verkaufte Menge gesetzt werden.');
+ s.production[kind]=next;save();render();
+}
+$('madeCookieMinus').onclick=()=>changeProduction('cookie',-1);
+$('madeCookiePlus').onclick=()=>changeProduction('cookie',1);
+$('madeHornMinus').onclick=()=>changeProduction('horn',-1);
+$('madeHornPlus').onclick=()=>changeProduction('horn',1);
+$('madeMixedMinus').onclick=()=>changeProduction('mixed',-1);
+$('madeMixedPlus').onclick=()=>changeProduction('mixed',1);
+
+$('saleCookieMinus').onclick=()=>{saleDraft.cookie=Math.max(0,saleDraft.cookie-1);renderSaleDraft()};
+$('saleCookiePlus').onclick=()=>{const st=stockTotals();if(saleDraft.cookie>=st.cookie)return alert('Kein weiterer Keks-Eimer im Bestand.');saleDraft.cookie++;renderSaleDraft()};
+$('saleHornMinus').onclick=()=>{saleDraft.horn=Math.max(0,saleDraft.horn-1);renderSaleDraft()};
+$('saleHornPlus').onclick=()=>{const st=stockTotals();if(saleDraft.horn>=st.horn)return alert('Kein weiterer Hörnchen-Eimer im Bestand.');saleDraft.horn++;renderSaleDraft()};
+$('saleMixedMinus').onclick=()=>{saleDraft.mixed=Math.max(0,saleDraft.mixed-1);renderSaleDraft()};
+$('saleMixedPlus').onclick=()=>{const st=stockTotals();if(saleDraft.mixed>=st.mixed)return alert('Kein weiterer ½/½-Eimer im Bestand.');saleDraft.mixed++;renderSaleDraft()};
+$('saleDateSelect').onchange=()=>{$('saleCustomDate').value=''};
+$('saveSale').onclick=()=>{
+ if(!(saleDraft.cookie||saleDraft.horn||saleDraft.mixed))return alert('Bitte mindestens einen verkauften Eimer erfassen.');
+ const st=stockTotals();
+ if(saleDraft.cookie>st.cookie||saleDraft.horn>st.horn||saleDraft.mixed>st.mixed)return alert('Der ausgewählte Verkauf ist höher als der aktuelle Bestand. Bitte Bestand prüfen.');
+ const date=selectedSaleDate();
+ s.saleEntries=s.saleEntries||[];
+ s.saleEntries.push({
+   id:'sale-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),date,
+   cookieQty:saleDraft.cookie,cookiePrice:n(s.salePrices.cookie),
+   hornQty:saleDraft.horn,hornPrice:n(s.salePrices.horn),
+   mixedQty:saleDraft.mixed,mixedPrice:n(s.salePrices.mixed)
+ });
+ saleDraft={cookie:0,horn:0,mixed:0};
+ $('saleCustomDate').value='';save();render();
+};
+$('salesHistory').onclick=e=>{
+ const id=e.target.dataset.saledel;if(!id)return;
+ if(confirm('Diesen Verkaufseintrag löschen?')){s.saleEntries=s.saleEntries.filter(x=>x.id!==id);save();render()}
+};
+
+$('quickOven').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('quickIron').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('addEnergyLog').onclick=()=>{
+ const device=$('logDevice').value,date=$('logDate').value,start=$('logStart').value,end=$('logEnd').value,ironCount=n($('logIronCount').value)||1;
+ if(!date||!start||!end)return alert('Bitte Datum, Start- und Endzeit auswählen.');
+ s.energyLogs=s.energyLogs||[];s.energyLogs.push({
+   device,date,start,end,ironCount,
+   watts:device==='iron'?ironCount*n(s.iron.wattsEach):n(s.oven.watts),
+   powerPrice:n(s.powerPrice),createdAt:new Date().toISOString()
+ });
+ $('logStart').value='';$('logEnd').value='';
+ save();render();
+};
+$('energyLogList').onclick=e=>{if(e.target.dataset.logdel!==undefined){s.energyLogs.splice(Number(e.target.dataset.logdel),1);save();render()}};
+$('logDate').value=new Date().toISOString().slice(0,10);
+
+$('exportBtn').onclick=()=>{const b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`weihnachtsmarkt-backen-${s.year}.json`;a.click();URL.revokeObjectURL(a.href)};
+$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{s={...deep(defaults),...JSON.parse(await e.target.files[0].text())};save();render()}catch{alert('Datei konnte nicht gelesen werden.')}};
+$('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? And
