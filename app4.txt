@@ -1,0 +1,9 @@
+ere Jahre bleiben erhalten.')){const y=s.year;s=freshYear(y);save();render()}};
+
+setInterval(()=>{if(s.oven.running||s.iron.running)render()},1000);
+
+compareYear=Number(s.year)-1;
+renderYearSelectors();
+render();
+initCloud();
+
