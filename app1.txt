@@ -1,0 +1,252 @@
+
+const KEY='wm_backen_v2';
+const ACTIVE_YEAR_KEY='wm_backen_active_year';
+const YEAR_KEY_PREFIX='wm_backen_year_';
+const SUPABASE_URL='https://pefkhiqzsaraiomtdkwh.supabase.co';
+const SUPABASE_KEY='sb_publishable_L2btgUZjvNwNKmqo69csKQ_H_UwkjBx';
+let cloud=null, cloudReady=false, cloudApplying=false, cloudTimer=null;
+let compareYear=null;
+const defaults={
+ year:new Date().getFullYear(),family1:'Römer',family2:'Rusche',powerPrice:.25,salePrices:{cookie:0,horn:0,mixed:0},
+ shopping:[
+  {name:'Weißer Kandis',qty:0,unit:'kg',cost:0,done:false},
+  {name:'Margarine',qty:0,unit:'kg',cost:0,done:false},
+  {name:'Mehl',qty:0,unit:'kg',cost:0,done:false},
+  {name:'Eier',qty:0,unit:'Stück',cost:0,done:false},
+  {name:'Zimt',qty:0,unit:'TL',cost:0,done:false},
+  {name:'Zucker',qty:0,unit:'kg',cost:0,done:false},
+  {name:'Vanillezucker',qty:0,unit:'Stück',cost:0,done:false},
+  {name:'Backpulver',qty:0,unit:'TL',cost:0,done:false},
+  {name:'Kuvertüre / Schokolade',qty:0,unit:'kg',cost:0,done:false},
+  {name:'Sonstiges',qty:0,unit:'Stück',cost:0,done:false}
+ ],
+ purchase:{buyer:'Familie 1',store:'',date:''},
+ planning:{hornBatches:0,cookieBatches:0,cookieKg:0,chocPerKg:200},
+ production:{cookie:0,horn:0,mixed:0},
+ sales:{cookieMade:0,cookieSold:0,cookiePrice:0,hornMade:0,hornSold:0,hornPrice:0,mixedSold:0,mixedPrice:0},
+ energyLogs:[],
+ saleEntries:[],
+ oven:{watts:3000,elapsed:0,running:false,startAt:null},
+ iron:{count:1,wattsEach:800,elapsed:0,running:false,startAt:null}
+};
+const n=v=>Number(String(v??'').replace(',','.'))||0;
+function deep(x){return JSON.parse(JSON.stringify(x))}
+let s=load();
+let saleDraft={cookie:0,horn:0,mixed:0};
+function normalizeState(old, yearOverride){
+ const base=deep(defaults), merged={...base,...(old||{})};
+ merged.sales={...deep(defaults.sales),...((old&&old.sales)||{})};
+ merged.salePrices={...deep(defaults.salePrices),...((old&&old.salePrices)||{})};
+ if(old && !old.salePrices && old.sales){
+   merged.salePrices.cookie=n(old.sales.cookiePrice);
+   merged.salePrices.horn=n(old.sales.hornPrice);
+   merged.salePrices.mixed=n(old.sales.mixedPrice);
+ }
+ merged.oven={...deep(defaults.oven),...((old&&old.oven)||{})};
+ merged.iron={...deep(defaults.iron),...((old&&old.iron)||{})};
+ merged.purchase={...deep(defaults.purchase),...((old&&old.purchase)||{})};
+ merged.planning={...deep(defaults.planning),...((old&&old.planning)||{})};
+ if(!Array.isArray(merged.shopping)) merged.shopping=deep(defaults.shopping);
+ merged.shopping=merged.shopping.map(x=>({...x,qty:Math.max(0,Math.round(n(x.qty))),unitPrice:x.unitPrice!==undefined?n(x.unitPrice):(n(x.qty)>0?n(x.cost)/n(x.qty):0)}));
+ merged.energyLogs=Array.isArray(old&&old.energyLogs)?old.energyLogs:[];
+ merged.saleEntries=Array.isArray(old&&old.saleEntries)?old.saleEntries:[];
+ merged.production={...deep(defaults.production),...((old&&old.production)||{})};
+ if(!merged.saleEntries.length && old && old.sales){
+   const hasOld=n(old.sales.cookieSold)||n(old.sales.hornSold)||n(old.sales.mixedSold);
+   if(hasOld) merged.saleEntries.push({
+     id:'legacy-'+Date.now(),date:(old.year||yearOverride||new Date().getFullYear())+'-12-01',
+     cookieQty:n(old.sales.cookieSold),cookiePrice:n(old.sales.cookiePrice),
+     hornQty:n(old.sales.hornSold),hornPrice:n(old.sales.hornPrice),
+     mixedQty:n(old.sales.mixedSold),mixedPrice:n(old.sales.mixedPrice)
+   });
+ }
+ if(!(old&&old.production)){
+   const sold=merged.saleEntries.reduce((a,e)=>{a.cookie+=n(e.cookieQty);a.horn+=n(e.hornQty);a.mixed+=n(e.mixedQty);return a},{cookie:0,horn:0,mixed:0});
+   merged.production.cookie=Math.max(n(old&&old.sales&&old.sales.cookieMade),sold.cookie);
+   merged.production.horn=Math.max(n(old&&old.sales&&old.sales.hornMade),sold.horn);
+   merged.production.mixed=Math.max(0,sold.mixed);
+ }
+ merged.production.cookie=Math.max(0,Math.round(n(merged.production.cookie)));
+ merged.production.horn=Math.max(0,Math.round(n(merged.production.horn)));
+ merged.production.mixed=Math.max(0,Math.round(n(merged.production.mixed)));
+ if(!old || !old.family1 || old.family1==='Familie 1') merged.family1='Römer';
+ if(!old || !old.family2 || old.family2==='Familie 2') merged.family2='Rusche';
+ if(!old || old.powerPrice===undefined || Number(old.powerPrice)===0.22) merged.powerPrice=.25;
+ if(yearOverride) merged.year=Number(yearOverride);
+ return merged;
+}
+function load(){
+ try{
+   const legacy=JSON.parse(localStorage.getItem(KEY)||'null');
+   const active=Number(localStorage.getItem(ACTIVE_YEAR_KEY)) || Number(legacy?.year) || new Date().getFullYear();
+   const archived=JSON.parse(localStorage.getItem(YEAR_KEY_PREFIX+active)||'null');
+   const data=archived || legacy || null;
+   const normalized=normalizeState(data,active);
+   if(legacy && !archived){
+      localStorage.setItem(YEAR_KEY_PREFIX+active,JSON.stringify(normalized));
+      localStorage.setItem(ACTIVE_YEAR_KEY,String(active));
+   }
+   return normalized;
+ }catch(e){return normalizeState(null,new Date().getFullYear())}
+}
+function save(){
+ localStorage.setItem(KEY,JSON.stringify(s));
+ localStorage.setItem(YEAR_KEY_PREFIX+s.year,JSON.stringify(s));
+ localStorage.setItem(ACTIVE_YEAR_KEY,String(s.year));
+ if(cloudReady && !cloudApplying) queueCloudSave();
+}
+function queueCloudSave(){
+ clearTimeout(cloudTimer);
+ cloudTimer=setTimeout(()=>saveCloudState(),350);
+}
+async function cloudRequest(path,options={}){
+ const headers=Object.assign({
+   'apikey':SUPABASE_KEY,
+   'Authorization':'Bearer '+SUPABASE_KEY,
+   'Content-Type':'application/json'
+ },options.headers||{});
+ const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,Object.assign({},options,{headers}));
+ if(!r.ok)throw new Error('Cloud '+r.status);
+ const body=await r.text(); return body?JSON.parse(body):null;
+}
+async function saveCloudState(){
+ if(!cloudReady)return;
+ try{
+   await cloudRequest('app_state?on_conflict=year',{
+     method:'POST',
+     headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+     body:JSON.stringify({year:Number(s.year),data:s,updated_at:new Date().toISOString()})
+   });
+   setSyncStatus('Synchronisiert',true);
+ }catch(e){setSyncStatus('Sync-Fehler',false)}
+}
+function setSyncStatus(label,ok){
+ const l=$('syncLabel'),d=document.querySelector('.sync .dot'),c=$('cloudStatus');
+ if(l)l.textContent=label;
+ if(c)c.textContent=label;
+ if(d)d.style.background=ok?'#76d39b':'#ffd36e';
+}
+let cloudPoll=null, lastCloudStamp='';
+async function fetchCloudYear(apply=true){
+ const rows=await cloudRequest('app_state?year=eq.'+Number(s.year)+'&select=data,updated_at&limit=1');
+ if(rows&&rows[0]){
+   const stamp=rows[0].updated_at||'';
+   if(apply && stamp && stamp!==lastCloudStamp){
+     lastCloudStamp=stamp;
+     cloudApplying=true;s=normalizeState(rows[0].data,s.year);
+     localStorage.setItem(KEY,JSON.stringify(s));
+     localStorage.setItem(YEAR_KEY_PREFIX+s.year,JSON.stringify(s));
+     cloudApplying=false;render();
+   }
+   return true;
+ }
+ return false;
+}
+async function initCloud(){
+ setSyncStatus('Cloud wird verbunden …',false);
+ try{
+   const exists=await fetchCloudYear(false);
+   cloudReady=true;
+   if(exists)await fetchCloudYear(true); else await saveCloudState();
+   setSyncStatus('Live synchronisiert',true);
+   clearInterval(cloudPoll);
+   cloudPoll=setInterval(async()=>{
+     try{await fetchCloudYear(true);setSyncStatus('Live synchronisiert',true)}
+     catch(e){setSyncStatus('Offline – lokal gespeichert',false)}
+   },3000);
+ }catch(e){
+   cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false);
+ }
+}
+function archivedYear(year){
+ try{
+   const raw=JSON.parse(localStorage.getItem(YEAR_KEY_PREFIX+year)||'null');
+   return raw?normalizeState(raw,year):null;
+ }catch(e){return null}
+}
+function freshYear(year){
+ const x=normalizeState(null,year);
+ x.family1=s.family1;x.family2=s.family2;x.powerPrice=s.powerPrice;
+ x.salePrices=deep(s.salePrices);
+ return x;
+}
+function availableYears(){
+ const years=new Set([Number(s.year)]);
+ for(let i=0;i<localStorage.length;i++){
+   const k=localStorage.key(i);
+   if(k&&k.startsWith(YEAR_KEY_PREFIX)){const y=Number(k.slice(YEAR_KEY_PREFIX.length));if(y)years.add(y)}
+ }
+ years.add(Number(s.year)-1);years.add(Number(s.year)+1);
+ return [...years].filter(y=>y>=2020&&y<=2100).sort((a,b)=>b-a);
+}
+function switchYear(year){
+ year=Number(year); if(year===Number(s.year))return;
+ save();
+ const existing=archivedYear(year);
+ s=existing||freshYear(year);
+ saleDraft={cookie:0,horn:0,mixed:0};
+ compareYear=year-1;
+ save();
+ renderYearSelectors();render();
+ if(cloudReady){
+   lastCloudStamp='';
+   fetchCloudYear(true).then(found=>{if(!found)saveCloudState()}).catch(()=>setSyncStatus('Offline – lokal gespeichert',false));
+ }
+}
+
+const $=id=>document.getElementById(id);
+const eur=v=>n(v).toLocaleString('de-DE',{style:'currency',currency:'EUR'});
+const elapsed=d=>d.elapsed+(d.running&&d.startAt?Date.now()-d.startAt:0);
+function stop(d){if(d.running){d.elapsed+=Date.now()-d.startAt;d.running=false;d.startAt=null}}
+function fmt(ms){let z=Math.floor(ms/1000),h=Math.floor(z/3600),m=Math.floor((z%3600)/60),q=z%60;return [h,m,q].map(x=>String(x).padStart(2,'0')).join(':')}
+function kwh(d,type){const w=type==='iron'?d.count*d.wattsEach:d.watts;return w/1000*(elapsed(d)/3600000)}
+const powerCost=(d,type)=>kwh(d,type)*s.powerPrice;
+const shopTotal=()=>s.shopping.reduce((a,x)=>a+(Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0))),0);
+function saleTotals(){
+ const entries=s.saleEntries||[];
+ return entries.reduce((a,e)=>{
+  a.cookie+=n(e.cookieQty);a.horn+=n(e.hornQty);a.mixed+=n(e.mixedQty);
+  a.cookieRev+=n(e.cookieQty)*n(e.cookiePrice);
+  a.hornRev+=n(e.hornQty)*n(e.hornPrice);
+  a.mixedRev+=n(e.mixedQty)*n(e.mixedPrice);
+  return a;
+ },{cookie:0,horn:0,mixed:0,cookieRev:0,hornRev:0,mixedRev:0});
+}
+const cookieRevenue=()=>saleTotals().cookieRev;
+const hornRevenue=()=>saleTotals().hornRev;
+const mixedRevenue=()=>saleTotals().mixedRev;
+const revenue=()=>cookieRevenue()+hornRevenue()+mixedRevenue();
+
+function logMinutes(log){
+ if(!log.start||!log.end)return 0;
+ const [sh,sm]=log.start.split(':').map(Number),[eh,em]=log.end.split(':').map(Number);
+ let mins=(eh*60+em)-(sh*60+sm); if(mins<0)mins+=1440; return mins;
+}
+function energyLogKwh(log){
+ const mins=logMinutes(log);
+ const watts=n(log.watts)|| (log.device==='iron'?(n(log.ironCount)||1)*s.iron.wattsEach:s.oven.watts);
+ return watts/1000*(mins/60);
+}
+function energyLogCost(log){return energyLogKwh(log)*(log.powerPrice!==undefined?n(log.powerPrice):s.powerPrice)}
+function energyLogsCost(){return (s.energyLogs||[]).reduce((a,l)=>a+energyLogCost(l),0)}
+
+const totalEnergy=()=>powerCost(s.oven,'oven')+powerCost(s.iron,'iron')+energyLogsCost();
+const profit=()=>revenue()-shopTotal()-totalEnergy();
+
+function shopHTML(x,i){
+ const qty=Math.max(0,Math.round(n(x.qty)));
+ const price=n(x.unitPrice!==undefined?x.unitPrice:(qty>0?n(x.cost)/qty:0));
+ return `<div class="shopitem ${x.done?'done':''}">
+  <input class="checkbox" type="checkbox" data-action="done" data-i="${i}" ${x.done?'checked':''}>
+  <input class="shopname" data-action="name" data-i="${i}" value="${esc(x.name)}">
+  <div class="stepper"><button class="secondary" data-action="minus" data-i="${i}" type="button">−</button><div class="count">${qty}</div><button class="secondary" data-action="plus" data-i="${i}" type="button">+</button></div>
+  <input class="cost" type="number" step=".01" data-action="unitPrice" data-i="${i}" value="${price||''}" placeholder="Preis/Stück €">
+  <button class="danger del" data-action="del" data-i="${i}" type="button">×</button>
+ </div>`;
+}
+function esc(t){return String(t).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function renderShop(){
+ const html=s.shopping.map(shopHTML).join('');
+ if($('homeShopList'))$('homeShopList').innerHTML=html;$('fullShopList').innerHTML=html;
+ const open=s.shopping.filter(x=>!x.done).length,done=s.shopping.length-open;
+ if($('needCount'))$('needCount').textC
