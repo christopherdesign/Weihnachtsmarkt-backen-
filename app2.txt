@@ -1,0 +1,207 @@
+ontent=open+' offen';if($('doneCount'))$('doneCount').textContent=done+' gekauft';if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
+ $('baseIngredients').innerHTML=s.shopping.map((x,i)=>`<div class="ing"><strong>${esc(x.name)}</strong><span>${x.qty||0}</span><span>${esc(x.unit)}</span><span class="ingcost money">${eur(x.cost)}</span><button class="danger ingdel" data-bi="${i}">×</button></div>`).join('');
+}
+
+function recipeNeeds(){
+ const h=n(s.planning.hornBatches),c=n(s.planning.cookieBatches),kg=n(s.planning.cookieKg),ch=n(s.planning.chocPerKg);
+ return [
+ {name:'Weißer Kandis',qty:h,unit:'kg'},{name:'Margarine',qty:h*.45+c*.5,unit:'kg'},
+ {name:'Mehl',qty:h+c*.75,unit:'kg'},{name:'Eier',qty:h*6+c,unit:'Stück'},
+ {name:'Zimt',qty:h,unit:'TL'},{name:'Zucker',qty:c*.375,unit:'kg'},
+ {name:'Vanillezucker',qty:c*3,unit:'Stück'},{name:'Backpulver',qty:c,unit:'TL'},
+ {name:'Kuvertüre / Schokolade',qty:kg*ch/1000,unit:'kg'},
+ {name:'Wasser',qty:h*1.5,unit:'l',notShopping:true}].filter(x=>x.qty>0)
+}
+function renderNeeds(){
+ const r=recipeNeeds();
+ $('recipeNeeds').innerHTML=r.length?r.map(x=>`<div class="ing"><strong>${esc(x.name)}</strong><span>${x.qty.toLocaleString('de-DE',{maximumFractionDigits:3})}</span><span>${x.unit}</span><span class="ingcost muted">${x.notShopping?'nicht einkaufen':''}</span></div>`).join(''):'<div class="muted">Noch keine Chargen eingetragen.</div>';
+}
+
+function renderEnergyLogs(){
+ const box=$('energyLogList'); if(!box)return;
+ const logs=(s.energyLogs||[]).map((l,i)=>({...l,_i:i})).sort((a,b)=>{
+   const ka=(a.date||'')+'T'+(a.start||'00:00'),kb=(b.date||'')+'T'+(b.start||'00:00');
+   return kb.localeCompare(ka);
+ });
+ box.innerHTML=logs.length?logs.map(l=>`<div class="logrow"><span>${l.device==='oven'?'Backofen':'Hörncheneisen'}</span><span>${l.date||''}</span><span>${l.start||''}–${l.end||''}</span><span>${eur(energyLogCost(l))}</span><button class="danger" data-logdel="${l._i}">×</button></div>`).join(''):'<div class="muted">Noch keine Energiezeiten erfasst.</div>';
+}
+
+function selectedSaleDate(){
+ const custom=$('saleCustomDate')?.value;
+ if(custom)return custom;
+ return $('saleDateSelect')?.value || new Date().toISOString().slice(0,10);
+}
+function fillSaleDates(){
+ const sel=$('saleDateSelect'); if(!sel)return;
+ const today=new Date(); sel.innerHTML='';
+ for(let i=0;i<14;i++){
+   const d=new Date(today);d.setDate(today.getDate()-i);
+   const iso=d.toISOString().slice(0,10);
+   const label=i===0?'Heute':i===1?'Gestern':d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'});
+   sel.insertAdjacentHTML('beforeend',`<option value="${iso}">${label} · ${d.toLocaleDateString('de-DE')}</option>`);
+ }
+}
+function stockTotals(){
+ const sold=saleTotals();
+ return {
+   cookie:n(s.production?.cookie)-sold.cookie,
+   horn:n(s.production?.horn)-sold.horn,
+   mixed:n(s.production?.mixed)-sold.mixed,
+   sold
+ };
+}
+function stockClass(v){return v<0?'stockbad':v<=2?'stocklow':'stockok'}
+function renderProductionAndStock(){
+ const p=s.production||{cookie:0,horn:0,mixed:0},st=stockTotals();
+ if($('madeCookieCount'))$('madeCookieCount').textContent=n(p.cookie);
+ if($('madeHornCount'))$('madeHornCount').textContent=n(p.horn);
+ if($('madeMixedCount'))$('madeMixedCount').textContent=n(p.mixed);
+ if($('planCookieStock'))$('planCookieStock').textContent=st.cookie;
+ if($('planHornStock'))$('planHornStock').textContent=st.horn;
+ if($('planMixedStock'))$('planMixedStock').textContent=st.mixed;
+ const rows=[['Cookie',st.cookie,p.cookie,st.sold.cookie],['Horn',st.horn,p.horn,st.sold.horn],['Mixed',st.mixed,p.mixed,st.sold.mixed]];
+ rows.forEach(([k,v,made,sold])=>{
+   const e=$('stock'+k);if(e){e.textContent=v;e.className='stocknum '+stockClass(v)}
+   if($('stock'+k+'Made'))$('stock'+k+'Made').textContent=n(made);
+   if($('stock'+k+'Sold'))$('stock'+k+'Sold').textContent=n(sold);
+ });
+ if($('stockTotalPill'))$('stockTotalPill').textContent=(st.cookie+st.horn+st.mixed)+' Eimer verfügbar';
+}
+function renderSaleDraft(){
+ if(!$('saleCookieCount'))return;
+ $('saleCookieCount').textContent=saleDraft.cookie;
+ $('saleHornCount').textContent=saleDraft.horn;
+ $('saleMixedCount').textContent=saleDraft.mixed;
+ $('saleCookieFixed').textContent=eur(s.salePrices.cookie);
+ $('saleHornFixed').textContent=eur(s.salePrices.horn);
+ $('saleMixedFixed').textContent=eur(s.salePrices.mixed);
+ const st=stockTotals();
+ const avail={cookie:st.cookie-saleDraft.cookie,horn:st.horn-saleDraft.horn,mixed:st.mixed-saleDraft.mixed};
+ [['Cookie',avail.cookie],['Horn',avail.horn],['Mixed',avail.mixed]].forEach(([k,v])=>{
+   const el=$('sale'+k+'Available');if(el){el.textContent=v;el.className=v<0?'stockbad':v<=2?'stocklow':'stockok'}
+ });
+}
+function renderSalesHistory(){
+ const box=$('salesHistory');if(!box)return;
+ const entries=[...(s.saleEntries||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ $('salesEntryCount').textContent=entries.length+' Einträge';
+ box.innerHTML=entries.length?entries.map(e=>{
+   const total=n(e.cookieQty)*n(e.cookiePrice)+n(e.hornQty)*n(e.hornPrice)+n(e.mixedQty)*n(e.mixedPrice);
+   return `<div class="saleentry">
+    <div class="salehead"><strong>${new Date((e.date||'')+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})}</strong><button class="danger" data-saledel="${esc(e.id)}">×</button></div>
+    <div class="salelines">
+      <div class="saleline"><strong>🍪 ${n(e.cookieQty)}</strong><div class="muted">${eur(n(e.cookieQty)*n(e.cookiePrice))}</div></div>
+      <div class="saleline"><strong>🧇 ${n(e.hornQty)}</strong><div class="muted">${eur(n(e.hornQty)*n(e.hornPrice))}</div></div>
+      <div class="saleline"><strong>🍪🍫 ${n(e.mixedQty)}</strong><div class="muted">${eur(n(e.mixedQty)*n(e.mixedPrice))}</div></div>
+    </div>
+    <div class="sep"></div><strong>Tagessumme: ${eur(total)}</strong>
+   </div>`;
+ }).join(''):'<div class="muted">Noch keine Verkäufe gespeichert.</div>';
+}
+function drawBarChart(canvas, labels, values){
+ if(!canvas)return;
+ const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
+ ctx.clearRect(0,0,w,h);
+ const pad=42,max=Math.max(...values,1),barW=Math.min(80,(w-pad*2)/(values.length*1.7));
+ ctx.font='13px system-ui';ctx.textAlign='center';ctx.fillStyle='#6f6863';
+ ctx.strokeStyle='#e4ddd7';ctx.beginPath();ctx.moveTo(pad,12);ctx.lineTo(pad,h-34);ctx.lineTo(w-12,h-34);ctx.stroke();
+ values.forEach((v,i)=>{
+   const x=pad+35+i*((w-pad-35)/values.length),bh=(h-60)*(v/max),y=h-34-bh;
+   ctx.fillStyle=i===0?'#8e1f2d':i===1?'#b84a58':'#d7a5ad';
+   ctx.fillRect(x-barW/2,y,barW,bh);
+   ctx.fillStyle='#2b2724';ctx.fillText(String(Math.round(v*100)/100),x,y-7);
+   ctx.fillStyle='#6f6863';ctx.fillText(labels[i],x,h-13);
+ });
+}
+
+function metricsForState(state){
+ if(!state)return {revenue:0,shop:0,energy:0,profit:0,buckets:0,cookie:0,horn:0,mixed:0};
+ const entries=Array.isArray(state.saleEntries)?state.saleEntries:[];
+ const sales=entries.reduce((a,e)=>{
+   a.cookie+=n(e.cookieQty);a.horn+=n(e.hornQty);a.mixed+=n(e.mixedQty);
+   a.revenue+=n(e.cookieQty)*n(e.cookiePrice)+n(e.hornQty)*n(e.hornPrice)+n(e.mixedQty)*n(e.mixedPrice);
+   return a;
+ },{cookie:0,horn:0,mixed:0,revenue:0});
+ const shop=(state.shopping||[]).reduce((a,x)=>a+(Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0))),0);
+ const timerElapsed=d=>(d?.elapsed||0)+(d?.running&&d?.startAt?Date.now()-d.startAt:0);
+ const ovenKwh=(n(state.oven?.watts)/1000)*(timerElapsed(state.oven)/3600000);
+ const ironKwh=((n(state.iron?.count)||1)*(n(state.iron?.wattsEach)||800)/1000)*(timerElapsed(state.iron)/3600000);
+ const logs=(state.energyLogs||[]).reduce((a,l)=>{
+   if(!l.start||!l.end)return a;
+   const [sh,sm]=l.start.split(':').map(Number),[eh,em]=l.end.split(':').map(Number);
+   let mins=(eh*60+em)-(sh*60+sm);if(mins<0)mins+=1440;
+   const watts=l.device==='iron'?(n(l.ironCount)||1)*(n(state.iron?.wattsEach)||800):n(state.oven?.watts);
+   return a+(watts/1000)*(mins/60);
+ },0);
+ const energy=(ovenKwh+ironKwh+logs)*n(state.powerPrice);
+ return {revenue:sales.revenue,shop,energy,profit:sales.revenue-shop-energy,buckets:sales.cookie+sales.horn+sales.mixed,cookie:sales.cookie,horn:sales.horn,mixed:sales.mixed};
+}
+function deltaInfo(cur,prev,invert=false){
+ if(!prev && prev!==0)return {text:'–',cls:'flat'};
+ if(prev===0){
+   if(cur===0)return {text:'± 0 %',cls:'flat'};
+   return {text:'neu',cls:invert?'down':'up'};
+ }
+ const pct=((cur-prev)/Math.abs(prev))*100;
+ const good=invert?pct<=0:pct>=0;
+ return {text:(pct>=0?'+':'')+pct.toLocaleString('de-DE',{maximumFractionDigits:1})+' %',cls:Math.abs(pct)<.05?'flat':good?'up':'down'};
+}
+function applyDelta(id,cur,prev,invert=false){
+ const el=$(id),d=deltaInfo(cur,prev,invert);if(!el)return;el.textContent=d.text;el.className='delta '+d.cls;
+}
+function renderYearSelectors(){
+ const years=availableYears();
+ const active=$('activeYearSelect'),comp=$('compareYearSelect');
+ if(active){
+   active.innerHTML=years.map(y=>`<option value="${y}" ${Number(y)===Number(s.year)?'selected':''}>${y}</option>`).join('');
+ }
+ if(compareYear===null) compareYear=Number(s.year)-1;
+ if(comp){
+   const compYears=[...new Set([...years,Number(s.year)-1])].filter(y=>y!==Number(s.year)).sort((a,b)=>b-a);
+   comp.innerHTML=compYears.map(y=>`<option value="${y}" ${Number(y)===Number(compareYear)?'selected':''}>${y}</option>`).join('');
+   if(!compYears.includes(Number(compareYear)))compareYear=compYears[0]||Number(s.year)-1;
+   comp.value=String(compareYear);
+ }
+}
+function renderYearComparison(){
+ const prev=archivedYear(compareYear),curM=metricsForState(s),prevM=metricsForState(prev);
+ if($('compareTitle'))$('compareTitle').textContent=s.year+' vs. '+compareYear;
+ if($('cmpRevenue'))$('cmpRevenue').textContent=eur(curM.revenue);
+ if($('cmpProfit'))$('cmpProfit').textContent=eur(curM.profit);
+ if($('cmpBuckets'))$('cmpBuckets').textContent=curM.buckets;
+ if($('cmpCosts'))$('cmpCosts').textContent=eur(curM.shop+curM.energy);
+ applyDelta('cmpRevenueDelta',curM.revenue,prevM.revenue);
+ applyDelta('cmpProfitDelta',curM.profit,prevM.profit);
+ applyDelta('cmpBucketsDelta',curM.buckets,prevM.buckets);
+ applyDelta('cmpCostsDelta',curM.shop+curM.energy,prevM.shop+prevM.energy,true);
+ const c=$('yearCompareChart');if(c){
+   drawGroupedBarChart(c,['Umsatz','Gewinn','Eimer'],[curM.revenue,curM.profit,curM.buckets],[prevM.revenue,prevM.profit,prevM.buckets],String(s.year),String(compareYear));
+ }
+}
+function drawGroupedBarChart(canvas,labels,current,previous,currentLabel,previousLabel){
+ if(!canvas)return;
+ const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;ctx.clearRect(0,0,w,h);
+ const pad=45,max=Math.max(...current.map(Math.abs),...previous.map(Math.abs),1);
+ ctx.strokeStyle='#e4ddd7';ctx.beginPath();ctx.moveTo(pad,15);ctx.lineTo(pad,h-40);ctx.lineTo(w-10,h-40);ctx.stroke();
+ const groupW=(w-pad-20)/labels.length,barW=Math.min(42,groupW/3);
+ labels.forEach((lab,i)=>{
+   const cx=pad+groupW*i+groupW/2;
+   const v1=current[i],v2=previous[i];
+   const bh1=(h-70)*(Math.abs(v1)/max),bh2=(h-70)*(Math.abs(v2)/max);
+   ctx.fillStyle='#8e1f2d';ctx.fillRect(cx-barW-3,h-40-bh1,barW,bh1);
+   ctx.fillStyle='#d7a5ad';ctx.fillRect(cx+3,h-40-bh2,barW,bh2);
+   ctx.fillStyle='#6f6863';ctx.font='12px system-ui';ctx.textAlign='center';ctx.fillText(lab,cx,h-17);
+ });
+ ctx.textAlign='left';ctx.fillStyle='#8e1f2d';ctx.fillText('■ '+currentLabel,pad,12);
+ ctx.fillStyle='#b98991';ctx.fillText('■ '+previousLabel,pad+90,12);
+}
+
+function renderCharts(){
+ const t=saleTotals();
+ drawBarChart($('salesChart'),['Kekse','Hörnchen','½/½'],[t.cookie,t.horn,t.mixed]);
+ drawBarChart($('moneyChart'),['Umsatz','Einkauf','Strom'],[revenue(),shopTotal(),totalEnergy()]);
+}
+
+function render(){
+ $('buyer').innerHTML=`<option>${esc(s.family1||'Familie 1')}</option><option>${esc(s.family2||'Familie 2')}</option>`;
+ $('buyer').value=s.purchase.buyer;$('store').value=s.purchase.store
