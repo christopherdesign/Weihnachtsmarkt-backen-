@@ -351,6 +351,7 @@ const mixedRevenue=()=>saleTotals().mixedRev;
 const revenue=()=>cookieRevenue()+hornRevenue()+mixedRevenue();
 
 function logMinutes(log){
+ if(n(log.durationMs)>0)return n(log.durationMs)/60000;
  if(!log.start||!log.end)return 0;
  const [sh,sm]=log.start.split(':').map(Number),[eh,em]=log.end.split(':').map(Number);
  let mins=(eh*60+em)-(sh*60+sm); if(mins<0)mins+=1440; return mins;

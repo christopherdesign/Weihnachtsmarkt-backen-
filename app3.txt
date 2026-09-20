@@ -99,6 +99,7 @@ function stopAndArchiveEnergy(device){
    ironCount:device==='iron'?(n(d.count)||1):undefined,
    watts:device==='iron'?(n(d.count)||1)*n(d.wattsEach):n(d.watts),
    powerPrice:n(s.powerPrice),
+   durationMs:Math.max(0,ended-started),
    createdAt:new Date().toISOString()
  });
  d.running=false;d.startAt=null;d.elapsed=0;
