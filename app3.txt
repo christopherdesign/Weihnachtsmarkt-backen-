@@ -1,25 +1,30 @@
 ;$('purchaseDate').value=s.purchase.date;
  $('hornBatches').value=s.planning.hornBatches;$('cookieBatches').value=s.planning.cookieBatches;$('cookieKg').value=s.planning.cookieKg;$('chocPerKg').value=s.planning.chocPerKg;renderNeeds();
  $('yearText').textContent=s.year;
- $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('famKpi').textContent=eur(profit()/2);
+ $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('homeCostsTotal').textContent=eur(shopTotal()+totalEnergy());$('famKpi').textContent=eur(profit()/2);
  const st=saleTotals();$('cookieHome').textContent=st.cookie;$('hornHome').textContent=st.horn;$('mixedHome').textContent=st.mixed;
  $('cookieHomeRev').textContent=eur(cookieRevenue())+' Umsatz';$('hornHomeRev').textContent=eur(hornRevenue())+' Umsatz';$('mixedHomeRev').textContent=eur(mixedRevenue())+' Umsatz';
- $('ovenWatts').value=s.oven.watts;$('powerPrice').value=s.powerPrice;
+ $('ovenWatts').value=s.oven.watts;$('machineWatts').value=s.machine.watts;$('powerPrice').value=s.powerPrice;
  $('settingCookiePrice').value=s.salePrices.cookie;$('settingHornPrice').value=s.salePrices.horn;$('settingMixedPrice').value=s.salePrices.mixed;
  $('ironCount').value=s.iron.count;$('ironPower').textContent=(s.iron.count*s.iron.wattsEach).toLocaleString('de-DE')+' W';
- $('ovenTimer').textContent=fmt(elapsed(s.oven));$('ironTimer').textContent=fmt(elapsed(s.iron));
+ $('ovenTimer').textContent=fmt(elapsed(s.oven));$('ironTimer').textContent=fmt(elapsed(s.iron));$('machineTimer').textContent=fmt(elapsed(s.machine));
  $('ovenKwh').textContent=kwh(s.oven,'oven').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
  $('ironKwh').textContent=kwh(s.iron,'iron').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
- $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));
- $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;
+ $('machineKwh').textContent=kwh(s.machine,'machine').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));$('machineCost').textContent=eur(powerCost(s.machine,'machine'));
+ $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;$('machineStart').disabled=s.machine.running;$('machineStop').disabled=!s.machine.running;
  $('year').value=s.year;$('family1').value=s.family1;$('family2').value=s.family2;
  $('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit';
  $('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit';
+ $('homeMachineState').textContent=s.machine.running?'läuft '+fmt(elapsed(s.machine)):'bereit · '+n(s.machine.watts).toLocaleString('de-DE')+' W';
  const today=new Date().toISOString().slice(0,10);
  const todayManual=(s.energyLogs||[]).filter(x=>x.date===today).reduce((a,l)=>a+energyLogCost(l),0);
- $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0));
+ $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0)+(s.machine.running?powerCost(s.machine,'machine'):0));
  $('homeBuckets').textContent=st.cookie+st.horn+st.mixed;
  $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!x.done&&n(x.qty)>0).length;
+ const stock=stockTotals();
+ $('homeStockTotal').textContent=stock.cookie+stock.horn+stock.mixed;
+ [['Cookie',stock.cookie],['Horn',stock.horn],['Mixed',stock.mixed]].forEach(([kind,value])=>{const el=$('homeStock'+kind);el.textContent=value;el.className='stocknum '+stockClass(value)});
  const expenses=familyExpenses(),share=profit()/2;
  $('family1Label').textContent=s.family1;$('family2Label').textContent=s.family2;
  $('family1Expenses').textContent=eur(expenses[s.family1]);$('family2Expenses').textContent=eur(expenses[s.family2]);
@@ -80,6 +85,7 @@ bind('settingCookiePrice',v=>s.salePrices.cookie=n(v));
 bind('settingHornPrice',v=>s.salePrices.horn=n(v));
 bind('settingMixedPrice',v=>s.salePrices.mixed=n(v));
 bind('ovenWatts',v=>s.oven.watts=n(v));
+bind('machineWatts',v=>s.machine.watts=n(v));
 $('ironCount').onchange=e=>{s.iron.count=Number(e.target.value);save();render()};
 
 function two(v){return String(v).padStart(2,'0')}
@@ -87,8 +93,9 @@ function localDateTime(ms){
  const d=new Date(ms);
  return {date:`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`,time:`${two(d.getHours())}:${two(d.getMinutes())}`};
 }
+function energyDeviceState(device){return device==='iron'?s.iron:device==='machine'?s.machine:s.oven}
 function stopAndArchiveEnergy(device){
- const d=device==='iron'?s.iron:s.oven;
+ const d=energyDeviceState(device);
  if(!d.running)return;
  const started=d.startAt||Date.now(),ended=Date.now();
  const a=localDateTime(started),b=localDateTime(ended);
@@ -97,7 +104,7 @@ function stopAndArchiveEnergy(device){
    id:makeId('energy'),
    device,date:a.date,start:a.time,end:b.time,
    ironCount:device==='iron'?(n(d.count)||1):undefined,
-   watts:device==='iron'?(n(d.count)||1)*n(d.wattsEach):n(d.watts),
+   watts:deviceWatts(device,s,d.count),
    powerPrice:n(s.powerPrice),
    durationMs:Math.max(0,ended-started),
    createdAt:new Date().toISOString()
@@ -109,6 +116,8 @@ $('ovenStart').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.start
 $('ovenStop').onclick=()=>{stopAndArchiveEnergy('oven');save();render()};$('ovenReset').onclick=()=>{if(confirm('Backofen-Zeit auf 0 setzen?')){s.oven.elapsed=0;s.oven.running=false;s.oven.startAt=null;save();render()}};
 $('ironStart').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save();render()}};
 $('ironStop').onclick=()=>{stopAndArchiveEnergy('iron');save();render()};$('ironReset').onclick=()=>{if(confirm('Hörncheneisen-Zeit auf 0 setzen?')){s.iron.elapsed=0;s.iron.running=false;s.iron.startAt=null;save();render()}};
+$('machineStart').onclick=()=>{if(!s.machine.running){s.machine.running=true;s.machine.startAt=Date.now();save();render()}};
+$('machineStop').onclick=()=>{stopAndArchiveEnergy('machine');save();render()};$('machineReset').onclick=()=>{if(confirm('Küchenmaschinen-Zeit auf 0 setzen?')){s.machine.elapsed=0;s.machine.running=false;s.machine.startAt=null;save();render()}};
 
 
 
@@ -156,12 +165,15 @@ $('salesHistory').onclick=e=>{
 
 $('quickOven').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
 $('quickIron').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('quickMachine').onclick=()=>{if(!s.machine.running){s.machine.running=true;s.machine.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('homeToSales').onclick=()=>openPage(document.querySelector('[data-page="sales"]'));
+$('logDevice').onchange=()=>{$('logIronCountWrap').hidden=$('logDevice').value!=='iron'};
 $('addEnergyLog').onclick=()=>{
  const device=$('logDevice').value,date=$('logDate').value,start=$('logStart').value,end=$('logEnd').value,ironCount=n($('logIronCount').value)||1;
  if(!date||!start||!end)return alert('Bitte Datum, Start- und Endzeit auswählen.');
  s.energyLogs=s.energyLogs||[];s.energyLogs.push({
    id:makeId('energy'),device,date,start,end,ironCount,
-   watts:device==='iron'?ironCount*n(s.iron.wattsEach):n(s.oven.watts),
+   watts:deviceWatts(device,s,ironCount),
    powerPrice:n(s.powerPrice),createdAt:new Date().toISOString()
  });
  $('logStart').value='';$('logEnd').value='';
@@ -169,6 +181,7 @@ $('addEnergyLog').onclick=()=>{
 };
 $('energyLogList').onclick=e=>{if(e.target.dataset.logdel!==undefined){s.energyLogs.splice(Number(e.target.dataset.logdel),1);save();render()}};
 $('logDate').value=new Date().toISOString().slice(0,10);
+$('logDevice').onchange();
 
 $('exportBtn').onclick=()=>{const b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`weihnachtsmarkt-backen-${s.year}.json`;a.click();URL.revokeObjectURL(a.href)};
 $('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const incoming=normalizeState(JSON.parse(await e.target.files[0].text()),s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};

@@ -23,7 +23,8 @@ function renderEnergyLogs(){
    const ka=(a.date||'')+'T'+(a.start||'00:00'),kb=(b.date||'')+'T'+(b.start||'00:00');
    return kb.localeCompare(ka);
  });
- box.innerHTML=logs.length?logs.map(l=>`<div class="logrow"><span>${l.device==='oven'?'Backofen':'Hörncheneisen'}</span><span>${l.date||''}</span><span>${l.start||''}–${l.end||''}</span><span>${eur(energyLogCost(l))}</span><button class="danger" data-logdel="${l._i}">×</button></div>`).join(''):'<div class="muted">Noch keine Energiezeiten erfasst.</div>';
+ const names={oven:'Backofen',iron:'Hörncheneisen',machine:'Küchenmaschine'};
+ box.innerHTML=logs.length?logs.map(l=>`<div class="logrow"><span>${names[l.device]||'Gerät'}</span><span>${l.date?new Date(l.date+'T12:00:00').toLocaleDateString('de-DE'):''}</span><span>${l.start||''}–${l.end||''}</span><span>${energyLogKwh(l).toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})} kWh · ${eur(energyLogCost(l))}</span><button class="danger" data-logdel="${l._i}">×</button></div>`).join(''):'<div class="muted">Noch keine Energiezeiten erfasst.</div>';
 }
 
 function selectedSaleDate(){
@@ -126,14 +127,14 @@ function metricsForState(state){
  const timerElapsed=d=>(d?.elapsed||0)+(d?.running&&d?.startAt?Date.now()-d.startAt:0);
  const ovenKwh=(n(state.oven?.watts)/1000)*(timerElapsed(state.oven)/3600000);
  const ironKwh=((n(state.iron?.count)||1)*(n(state.iron?.wattsEach)||800)/1000)*(timerElapsed(state.iron)/3600000);
+ const machineKwh=((n(state.machine?.watts)||1000)/1000)*(timerElapsed(state.machine)/3600000);
  const logs=(state.energyLogs||[]).reduce((a,l)=>{
-   if(!l.start||!l.end)return a;
-   const [sh,sm]=l.start.split(':').map(Number),[eh,em]=l.end.split(':').map(Number);
-   let mins=(eh*60+em)-(sh*60+sm);if(mins<0)mins+=1440;
-   const watts=l.device==='iron'?(n(l.ironCount)||1)*(n(state.iron?.wattsEach)||800):n(state.oven?.watts);
+   let mins=n(l.durationMs)>0?n(l.durationMs)/60000:0;
+   if(!mins&&l.start&&l.end){const [sh,sm]=l.start.split(':').map(Number),[eh,em]=l.end.split(':').map(Number);mins=(eh*60+em)-(sh*60+sm);if(mins<0)mins+=1440}
+   const watts=n(l.watts)||deviceWatts(l.device,state,l.ironCount);
    return a+(watts/1000)*(mins/60);
  },0);
- const energy=(ovenKwh+ironKwh+logs)*n(state.powerPrice);
+ const energy=(ovenKwh+ironKwh+machineKwh+logs)*n(state.powerPrice);
  return {revenue:sales.revenue,shop,energy,profit:sales.revenue-shop-energy,buckets:sales.cookie+sales.horn+sales.mixed,cookie:sales.cookie,horn:sales.horn,mixed:sales.mixed};
 }
 function deltaInfo(cur,prev,invert=false){
