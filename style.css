@@ -8,6 +8,7 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sa
 header{background:linear-gradient(135deg,var(--red),var(--red2));color:#fff;padding:20px 16px 30px;border-radius:0 0 26px 26px}
 .wrap{max-width:1040px;margin:auto}
 .head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+@media(max-width:520px){.head{flex-direction:column}.sync{align-self:flex-start}}
 h1{font-size:25px;margin:0 0 4px}header p{margin:0;opacity:.9}
 .sync{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);padding:7px 10px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
 .dot{width:9px;height:9px;border-radius:50%;background:#ffd36e}
@@ -100,4 +101,3 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:18px}
 .compare .v{font-size:18px;font-weight:900;margin-top:3px}
 .delta{font-size:11px;font-weight:900;margin-top:4px}
 .delta.up{color:var(--green)}.delta.down{color:var(--red)}.delta.flat{color:var(--muted)}
-
