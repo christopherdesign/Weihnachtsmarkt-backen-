@@ -170,3 +170,27 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
  .chartbox canvas{height:190px}.quickstart{grid-template-columns:1fr 1fr}.quickbtn{min-height:68px;padding:12px;font-size:14px}
 }
 @media(max-width:390px){.quickstart{grid-template-columns:1fr}.kpis-six{grid-template-columns:1fr 1fr}}
+
+
+/* V10.1 mobile device editor fix */
+#deviceAdminList{display:grid;gap:10px}
+#deviceAdminList>.shopitem{display:block!important;padding:12px;border-radius:16px;background:#f9fbfa}
+#deviceAdminList>.shopitem>.row{grid-template-columns:repeat(12,minmax(0,1fr));width:100%}
+#deviceAdminList input,#deviceAdminList select{min-width:0;width:100%}
+@media(max-width:650px){
+ #energyAdminCard{padding:14px 12px}
+ #deviceAdminList>.shopitem{padding:11px;margin:0}
+ #deviceAdminList>.shopitem>.row{display:grid;grid-template-columns:1fr 1fr 64px;gap:9px;align-items:end}
+ #deviceAdminList .c3:nth-child(1){grid-column:1/2}
+ #deviceAdminList .c3:nth-child(2){grid-column:2/4}
+ #deviceAdminList .c3:nth-child(3){grid-column:1/3}
+ #deviceAdminList .c2{grid-column:3/4}
+ #deviceAdminList .c1{grid-column:3/4;grid-row:1/2;align-self:start;justify-self:end}
+ #deviceAdminList .c1 label{display:none}
+ #deviceAdminList .c1 button{width:42px;height:42px;padding:0;font-size:20px}
+ #deviceAdminList label{font-size:11px;margin-bottom:4px}
+ #deviceAdminList input,#deviceAdminList select{font-size:15px;padding:10px 9px}
+ #familyPowerPrices .c6{grid-column:span 6!important}
+ #energyAdminCard>#deviceAdminList+.sep+ .row{grid-template-columns:1fr 1fr}
+ #newDeviceFamily,#newDeviceType,#newDeviceName,#newDeviceWatts{width:100%}
+}
