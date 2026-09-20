@@ -1,0 +1,71 @@
+
+/* V9.4 – flexible Energieverwaltung je Familie/Gerät */
+(function(){
+ const oldRender=render;
+ if(!s.energyConfig){
+   s.energyConfig={
+     prices:{[s.family1]:n(s.powerPrice)||.25,[s.family2]:n(s.powerPrice)||.25},
+     devices:[
+       {id:'dev-roemer-oven',family:s.family1,type:'Backofen',name:'NEFF Backofen',watts:n(s.oven?.watts)||3000,running:false,startAt:null},
+       {id:'dev-roemer-iron',family:s.family1,type:'Hörncheneisen',name:'Cloer Hörncheneisen',watts:n(s.iron?.wattsEach)||800,running:false,startAt:null},
+       {id:'dev-roemer-machine',family:s.family1,type:'Küchenmaschine',name:'Küchenmaschine Römer',watts:n(s.machine?.watts)||1000,running:false,startAt:null},
+       {id:'dev-roemer-stove',family:s.family1,type:'Herd',name:'Herd Römer',watts:2000,running:false,startAt:null},
+       {id:'dev-rusche-machine',family:s.family2,type:'Küchenmaschine',name:'Küchenmaschine Rusche',watts:1400,running:false,startAt:null},
+       {id:'dev-rusche-stove',family:s.family2,type:'Herd',name:'Herd Rusche',watts:2000,running:false,startAt:null}
+     ]
+   };
+ }
+ if(!SYNC_PATHS.includes('energyConfig'))SYNC_PATHS.push('energyConfig');
+ function cfg(){s.energyConfig=s.energyConfig||{prices:{},devices:[]};s.energyConfig.prices=s.energyConfig.prices||{};s.energyConfig.devices=s.energyConfig.devices||[];return s.energyConfig}
+ function famPrice(f){return n(cfg().prices[f])||n(s.powerPrice)||.25}
+ function icon(t){return t==='Backofen'?'🔥':t==='Hörncheneisen'?'🧇':t==='Küchenmaschine'?'🥣':t==='Herd'?'🍳':'⚡'}
+ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+ function devElapsed(d){return d.running&&d.startAt?Math.max(0,Date.now()-d.startAt):0}
+ function devCost(d){return n(d.watts)/1000*(devElapsed(d)/3600000)*famPrice(d.family)}
+ function energyByFamily(){
+   const out={[s.family1]:0,[s.family2]:0};
+   (s.energyLogs||[]).forEach(l=>{const f=l.family||'';if(Object.hasOwn(out,f))out[f]+=energyLogCost(l)});
+   cfg().devices.forEach(d=>{if(Object.hasOwn(out,d.family))out[d.family]+=devCost(d)});
+   return out;
+ }
+ function ensureUi(){
+   const settings=$('settings')?.querySelector('.grid');
+   if(settings&&!$('energyAdminCard')){
+     const card=document.createElement('div');card.className='card';card.id='energyAdminCard';
+     card.innerHTML='<div class="section-title"><h2>⚡ Energie & Geräte</h2><span class="pill">je Familie</span></div><div id="familyPowerPrices"></div><div class="sep"></div><h3>Geräte verwalten</h3><div id="deviceAdminList"></div><div class="sep"></div><div class="row"><div class="c3 sm12"><label>Familie</label><select id="newDeviceFamily"></select></div><div class="c3 sm12"><label>Gerätetyp</label><select id="newDeviceType"><option>Backofen</option><option>Hörncheneisen</option><option>Küchenmaschine</option><option>Herd</option><option>Sonstiges</option></select></div><div class="c3 sm12"><label>Gerätename</label><input id="newDeviceName" placeholder="z. B. Kenwood Chef XL"></div><div class="c3 sm12"><label>Leistung (W)</label><input id="newDeviceWatts" type="number" min="1" step="1"></div><div class="c12"><button class="primary" id="addEnergyDevice">+ Gerät hinzufügen</button></div></div>';
+     settings.insertBefore(card,settings.children[1]||null);
+     $('addEnergyDevice').onclick=()=>{const name=$('newDeviceName').value.trim(),watts=Math.max(1,n($('newDeviceWatts').value));if(!name)return alert('Bitte einen Gerätenamen eintragen.');cfg().devices.push({id:makeId('device'),family:$('newDeviceFamily').value,type:$('newDeviceType').value,name,watts,running:false,startAt:null});$('newDeviceName').value='';$('newDeviceWatts').value='';save();render()};
+     card.addEventListener('input',e=>{const id=e.target.dataset.devid,field=e.target.dataset.field;if(id&&field){const d=cfg().devices.find(x=>x.id===id);if(d){d[field]=field==='watts'?Math.max(1,n(e.target.value)):e.target.value;save()}}if(e.target.dataset.pricefam){cfg().prices[e.target.dataset.pricefam]=n(e.target.value);save()}});
+     card.addEventListener('click',e=>{const id=e.target.dataset.deldev;if(id){const d=cfg().devices.find(x=>x.id===id);if(d?.running)return alert('Laufendes Gerät zuerst stoppen.');if(confirm('Gerät wirklich löschen? Bereits protokollierte Energiekosten bleiben erhalten.')){cfg().devices=cfg().devices.filter(x=>x.id!==id);save();render()}}});
+   }
+   const grid=$('energy')?.querySelector('.grid');
+   if(grid&&!$('dynamicEnergy')){
+     [...grid.children].forEach((x,i)=>{if(i>0)x.style.display='none'});
+     const wrap=document.createElement('div');wrap.id='dynamicEnergy';wrap.style.display='contents';
+     grid.appendChild(wrap);
+     grid.firstElementChild.querySelector('.note').innerHTML='Jede Familie hat einen eigenen Strompreis. Leistung, Gerätename und Gerätetyp werden separat gepflegt. Beim Stoppen werden <strong>Familie, Gerät, Wattzahl und Strompreis</strong> fest im Protokoll gespeichert.';
+     wrap.addEventListener('click',e=>{const id=e.target.dataset.start||e.target.dataset.stop||e.target.dataset.reset;if(!id)return;const d=cfg().devices.find(x=>x.id===id);if(!d)return;if(e.target.dataset.start){if(!d.running){d.running=true;d.startAt=Date.now()}}else if(e.target.dataset.stop){if(d.running){const end=Date.now(),start=d.startAt||end;s.energyLogs.push({id:makeId('energy'),device:'custom',deviceId:d.id,deviceType:d.type,deviceName:d.name,family:d.family,date:localDateTime(start).date,start:localDateTime(start).time,end:localDateTime(end).time,watts:n(d.watts),powerPrice:famPrice(d.family),durationMs:Math.max(0,end-start),createdAt:nowIso()});d.running=false;d.startAt=null}}else if(e.target.dataset.reset&&confirm('Laufzeit ohne Protokolleintrag zurücksetzen?')){d.running=false;d.startAt=null}save();render()});
+   }
+   if(!$('energyFamilySummary')){
+     const home=$('home')?.querySelector('.grid'),card=document.createElement('div');card.className='card';card.id='energyFamilySummary';card.innerHTML='<h2>⚡ Energiekosten nach Familie</h2><div class="familygrid" id="energyFamilySummaryBody"></div>';home?.appendChild(card);
+   }
+ }
+ function renderFlexibleEnergy(){
+   ensureUi();
+   const c=cfg();
+   if(!Object.hasOwn(c.prices,s.family1))c.prices[s.family1]=n(s.powerPrice)||.25;
+   if(!Object.hasOwn(c.prices,s.family2))c.prices[s.family2]=n(s.powerPrice)||.25;
+   $('familyPowerPrices').innerHTML='<div class="row">'+[s.family1,s.family2].map(f=>'<div class="c6 sm12"><label>Strompreis '+esc(f)+' (€/kWh)</label><input type="number" step=".001" min="0" data-pricefam="'+esc(f)+'" value="'+famPrice(f)+'"></div>').join('')+'</div>';
+   $('newDeviceFamily').innerHTML=[s.family1,s.family2].map(f=>'<option>'+esc(f)+'</option>').join('');
+   $('deviceAdminList').innerHTML=c.devices.length?c.devices.map(d=>'<div class="shopitem"><div class="row"><div class="c3 sm12"><label>Familie</label><select data-devid="'+d.id+'" data-field="family">'+[s.family1,s.family2].map(f=>'<option '+(d.family===f?'selected':'')+'>'+esc(f)+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerätetyp</label><select data-devid="'+d.id+'" data-field="type">'+['Backofen','Hörncheneisen','Küchenmaschine','Herd','Sonstiges'].map(t=>'<option '+(d.type===t?'selected':'')+'>'+t+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerätename</label><input data-devid="'+d.id+'" data-field="name" value="'+esc(d.name)+'"></div><div class="c2 sm12"><label>Watt</label><input type="number" min="1" data-devid="'+d.id+'" data-field="watts" value="'+n(d.watts)+'"></div><div class="c1 sm12"><label>&nbsp;</label><button class="danger compact" data-deldev="'+d.id+'">×</button></div></div></div>').join(''):'<div class="muted">Noch keine Geräte hinterlegt.</div>';
+   $('dynamicEnergy').innerHTML=c.devices.map(d=>'<div class="quarter card energy-device"><h2>'+icon(d.type)+' '+esc(d.name)+'</h2><div class="muted">'+esc(d.family)+' · '+esc(d.type)+'</div><div><strong>'+n(d.watts).toLocaleString('de-DE')+' W</strong> · '+famPrice(d.family).toLocaleString('de-DE',{minimumFractionDigits:3})+' €/kWh</div><div class="timerbox"><div class="muted">Laufzeit</div><div class="timer">'+fmt(devElapsed(d))+'</div><div class="actions"><button class="primary" data-start="'+d.id+'" '+(d.running?'disabled':'')+'>Start</button><button class="secondary" data-stop="'+d.id+'" '+(!d.running?'disabled':'')+'>Stopp</button><button class="danger" data-reset="'+d.id+'">Reset</button></div></div><div class="sep"></div><div>'+(n(d.watts)/1000*(devElapsed(d)/3600000)).toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh</div><div class="big money">'+eur(devCost(d))+'</div></div>').join('')+'<div class="card"><div class="section-title"><h2>📋 Energieprotokoll</h2><span class="pill">historische Werte unverändert</span></div><div id="flexEnergyLog"></div></div>';
+   const logs=[...(s.energyLogs||[])].sort((a,b)=>String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date)));
+   $('flexEnergyLog').innerHTML=logs.length?logs.map(l=>'<div class="shopitem"><strong>'+esc(l.deviceName||({oven:'Backofen',iron:'Hörncheneisen',machine:'Küchenmaschine',stove:'Herd'}[l.device]||'Gerät'))+'</strong><div class="muted">'+esc(l.family||'Altbestand')+' · '+esc(l.deviceType||'')+' · '+esc(l.date||'')+' · '+Math.round(logMinutes(l))+' Min.</div><div>'+n(l.watts||deviceWatts(l.device,s,l.ironCount)).toLocaleString('de-DE')+' W · '+n(l.powerPrice||s.powerPrice).toLocaleString('de-DE',{minimumFractionDigits:3})+' €/kWh · <strong>'+eur(energyLogCost(l))+'</strong></div></div>').join(''):'<div class="muted">Noch keine Energiezeiten gespeichert.</div>';
+   const by=energyByFamily();$('energyFamilySummaryBody').innerHTML=[s.family1,s.family2].map(f=>'<div class="compare"><div class="l">'+esc(f)+'</div><div class="v money">'+eur(by[f])+'</div><div class="muted">Stromkosten</div></div>').join('');
+   const qs=document.querySelector('#home .quickstart');if(qs)qs.innerHTML=c.devices.map(d=>'<button class="primary quickbtn" data-qdev="'+d.id+'">'+icon(d.type)+' '+esc(d.name)+'<small>'+esc(d.family)+' · '+(d.running?'läuft '+fmt(devElapsed(d)):n(d.watts).toLocaleString('de-DE')+' W')+'</small></button>').join('');
+   qs?.querySelectorAll('[data-qdev]').forEach(b=>b.onclick=()=>{const d=c.devices.find(x=>x.id===b.dataset.qdev);if(d&&!d.running){d.running=true;d.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()});
+ }
+ render=function(){oldRender();renderFlexibleEnergy()};
+ render();
+ setInterval(()=>{if(cfg().devices.some(d=>d.running))renderFlexibleEnergy()},1000);
+})();
