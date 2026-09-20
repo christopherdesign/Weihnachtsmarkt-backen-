@@ -279,7 +279,9 @@ async function fetchCloudYear(apply=true){
  return false;
 }
 async function initCloud(){
- setSyncStatus('Cloud wird verbunden …',false);
+ if(syncInFlight)return;
+ setSyncStatus(navigator.onLine?'Cloud wird verbunden …':'Offline – lokal gespeichert',false);
+ if(!navigator.onLine){cloudReady=false;return}
  try{
    cloudReady=true;
    const exists=await fetchCloudYear(true);
@@ -287,13 +289,24 @@ async function initCloud(){
    setSyncStatus('Live synchronisiert',true);
    clearInterval(cloudPoll);
    cloudPoll=setInterval(async()=>{
-     try{await fetchCloudYear(true);setSyncStatus('Live synchronisiert',true)}
-     catch(e){setSyncStatus('Offline – lokal gespeichert',false)}
+     if(!navigator.onLine){cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false);return}
+     try{
+       cloudReady=true;
+       await fetchCloudYear(true);
+       setSyncStatus('Live synchronisiert',true);
+     }catch(e){
+       cloudReady=false;
+       setSyncStatus('Verbindung unterbrochen – erneuter Versuch …',false);
+     }
    },2500);
  }catch(e){
-   cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false);
+   cloudReady=false;
+   setSyncStatus('Verbindung unterbrochen – erneuter Versuch …',false);
  }
 }
+setInterval(()=>{if(navigator.onLine&&!cloudReady)initCloud()},5000);
+addEventListener('online',()=>initCloud());
+addEventListener('offline',()=>{cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false)});
 function archivedYear(year){
  try{
    const raw=JSON.parse(localStorage.getItem(YEAR_KEY_PREFIX+year)||'null');
