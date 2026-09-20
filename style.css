@@ -123,3 +123,50 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:18px}
 .purchase-proof{display:grid;grid-template-columns:minmax(0,1fr) 130px;gap:12px;align-items:start}.purchase-line{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #f1ebe7}
 .receipt-link{display:grid;gap:5px;color:var(--red);font-size:12px;font-weight:850;text-align:center;text-decoration:none}.receipt-link img{width:100%;height:130px;object-fit:cover;border:1px solid var(--line);border-radius:11px;background:#fff}
 @media(max-width:620px){.purchase-proof{grid-template-columns:1fr}.receipt-link{grid-template-columns:86px 1fr;align-items:center;text-align:left}.receipt-link img{width:86px;height:86px}}
+
+
+/* V10 Dashboard UI */
+:root{--bg:#f3f6f4;--card:#ffffff;--text:#17231e;--muted:#6b7771;--red:#a93b45;--red2:#c55a62;--line:#dfe7e2;--green:#176b4d;--amber:#a66a00;--shadow:0 8px 30px rgba(23,45,35,.07);--nav:#153e31;--soft:#edf5f1}
+body{background:linear-gradient(180deg,#eef4f1 0,#f7f9f8 330px);color:var(--text)}
+header{background:linear-gradient(125deg,#123f31,#1d6a4f);padding:24px 18px 34px;border-radius:0 0 30px 30px;box-shadow:0 10px 30px rgba(18,63,49,.16)}
+header h1{font-size:27px;letter-spacing:-.5px} header p{opacity:.78;font-size:13px}
+.sync{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.16)}
+.tabs{gap:6px;padding:12px;top:0;background:rgba(247,249,248,.93);border-bottom:1px solid rgba(223,231,226,.8)}
+.tab{border:0;background:transparent;color:#66736d;padding:10px 14px}.tab.active{background:var(--nav);box-shadow:0 4px 12px rgba(21,62,49,.15)}
+main{padding-top:14px}.grid{gap:14px}.card{border:1px solid rgba(220,230,224,.9);border-radius:20px;padding:17px;box-shadow:var(--shadow)}
+.overview-card{border-top:0;background:linear-gradient(135deg,#fff,#f5faf7)}
+h2{letter-spacing:-.25px}.pill{background:var(--soft);color:var(--green)}
+.kpis{gap:10px}.kpi{border:0;background:#f7faf8;border-radius:16px;padding:14px}.kpi .l{font-size:11px;letter-spacing:.2px;text-transform:uppercase}.kpi .v{font-size:25px}.kpi.good{background:#e9f5ef}.good .v{color:#126343}
+.stockcard,.salecard,.chartbox,.compare,.mini,.timerbox,.saleentry,.purchase-entry{border-color:#e2eae5;background:#fbfcfb}
+.stockcard .stocknum{font-size:34px}.chartbox{padding:15px}.chartbox h3{color:#44534c}
+.primary{background:var(--nav);box-shadow:0 4px 12px rgba(21,62,49,.12)}.primary:hover{background:#1c5743}.secondary{background:#edf2ef}.danger{background:#fff0f1;color:#a33440}
+input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{outline:3px solid rgba(23,107,77,.11);border-color:#5b9d83}
+.quickbtn{text-align:left;background:linear-gradient(135deg,#164a39,#1e6c50);min-height:78px}.quickbtn small{opacity:.72}
+.section-title h2{margin-bottom:0}.section-title{margin-bottom:13px}
+.note{background:#f6f8ee;border-color:#e4e8c8;color:#53601e}
+.energy-device{border-top:3px solid #2c7a5d}.money{letter-spacing:-.2px}
+.dashboard-mini .mini{background:#f5f9f7}
+#home>.grid{grid-template-columns:repeat(12,1fr)}
+#home .overview-card{grid-column:span 12}
+#home .card:nth-child(2){grid-column:span 7}
+#home .card:nth-child(3){grid-column:span 5}
+#home .card:nth-child(4){grid-column:span 12}
+#home .card:nth-child(5){grid-column:span 5}
+#home .card:nth-child(6){grid-column:span 7}
+#energyFamilySummary{grid-column:span 12!important}
+@media(max-width:850px){#home .card{grid-column:span 12!important}}
+@media(max-width:650px){
+ body{padding-bottom:76px} header{padding:18px 15px 25px;border-radius:0 0 24px 24px}.head{gap:10px}header h1{font-size:22px}
+ .tabs{position:fixed;bottom:0;top:auto;left:0;right:0;z-index:100;padding:7px 6px calc(7px + env(safe-area-inset-bottom));justify-content:space-around;overflow:visible;background:rgba(255,255,255,.97);box-shadow:0 -8px 30px rgba(20,48,37,.12);border-top:1px solid #e1e9e4}
+ .tab{font-size:0;padding:8px 7px;min-width:45px;display:grid;place-items:center;gap:2px}.tab:before{font-size:20px}.tab:after{font-size:9px;font-weight:800}
+ .tab[data-page="home"]:before{content:"⌂"}.tab[data-page="home"]:after{content:"Dashboard"}
+ .tab[data-page="plan"]:before{content:"◫"}.tab[data-page="plan"]:after{content:"Produktion"}
+ .tab[data-page="shop"]:before{content:"🛒"}.tab[data-page="shop"]:after{content:"Einkauf"}
+ .tab[data-page="sales"]:before{content:"€"}.tab[data-page="sales"]:after{content:"Verkauf"}
+ .tab[data-page="energy"]:before{content:"⚡"}.tab[data-page="energy"]:after{content:"Energie"}
+ .tab[data-page="settings"]:before{content:"⚙"}.tab[data-page="settings"]:after{content:"Mehr"}
+ .tab.active{background:#e8f3ee;color:var(--nav);box-shadow:none}
+ main{padding:12px 10px 20px}.card{border-radius:17px;padding:14px}.kpis-six{grid-template-columns:repeat(2,1fr)}.kpi .v{font-size:21px}
+ .chartbox canvas{height:190px}.quickstart{grid-template-columns:1fr 1fr}.quickbtn{min-height:68px;padding:12px;font-size:14px}
+}
+@media(max-width:390px){.quickstart{grid-template-columns:1fr}.kpis-six{grid-template-columns:1fr 1fr}}
