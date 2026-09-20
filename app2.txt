@@ -83,12 +83,12 @@ function renderSaleDraft(){
 }
 function renderSalesHistory(){
  const box=$('salesHistory');if(!box)return;
- const entries=[...(s.saleEntries||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ const entries=[...(s.saleEntries||[])].sort((a,b)=>(b.soldAt||b.createdAt||b.date||'').localeCompare(a.soldAt||a.createdAt||a.date||''));
  $('salesEntryCount').textContent=entries.length+' Einträge';
  box.innerHTML=entries.length?entries.map(e=>{
    const total=n(e.cookieQty)*n(e.cookiePrice)+n(e.hornQty)*n(e.hornPrice)+n(e.mixedQty)*n(e.mixedPrice);
    return `<div class="saleentry">
-    <div class="salehead"><strong>${new Date((e.date||'')+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})}</strong><button class="danger" data-saledel="${esc(e.id)}">×</button></div>
+    <div class="salehead"><strong>${new Date((e.date||'')+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'})}${e.soldAt?' · '+e.soldAt.slice(11,16)+' Uhr':''}</strong><button class="danger" data-saledel="${esc(e.id)}">×</button></div>
     <div class="salelines">
       <div class="saleline"><strong>🍪 ${n(e.cookieQty)}</strong><div class="muted">${eur(n(e.cookieQty)*n(e.cookiePrice))}</div></div>
       <div class="saleline"><strong>🧇 ${n(e.hornQty)}</strong><div class="muted">${eur(n(e.hornQty)*n(e.hornPrice))}</div></div>

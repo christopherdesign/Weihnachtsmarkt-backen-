@@ -2,9 +2,11 @@
 const KEY='wm_backen_v2';
 const ACTIVE_YEAR_KEY='wm_backen_active_year';
 const YEAR_KEY_PREFIX='wm_backen_year_';
+const DEVICE_KEY='wm_backen_device_id';
+const WORKSPACE_KEY='wm_backen_workspace_id';
 const SUPABASE_URL='https://pefkhiqzsaraiomtdkwh.supabase.co';
 const SUPABASE_KEY='sb_publishable_L2btgUZjvNwNKmqo69csKQ_H_UwkjBx';
-let cloud=null, cloudReady=false, cloudApplying=false, cloudTimer=null;
+let cloudReady=false, cloudApplying=false, cloudTimer=null, syncInFlight=false, syncAgain=false;
 let compareYear=null;
 const defaults={
  year:new Date().getFullYear(),family1:'Römer',family2:'Rusche',powerPrice:.25,salePrices:{cookie:0,horn:0,mixed:0},
@@ -31,9 +33,59 @@ const defaults={
 };
 const n=v=>Number(String(v??'').replace(',','.'))||0;
 function deep(x){return JSON.parse(JSON.stringify(x))}
+const nowIso=()=>new Date().toISOString();
+function makeId(prefix='id'){
+ const id=globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+ return prefix+'-'+id;
+}
+function hashText(value){
+ let h=2166136261;for(const c of String(value)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}
+ return (h>>>0).toString(36);
+}
+function deviceId(){
+ let id=localStorage.getItem(DEVICE_KEY);
+ if(!id){id=makeId('device');localStorage.setItem(DEVICE_KEY,id)}
+ return id;
+}
+function workspaceId(){
+ const fromLink=new URLSearchParams(location.hash.replace(/^#/,'' )).get('workspace');
+ if(fromLink&&/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(fromLink))localStorage.setItem(WORKSPACE_KEY,fromLink);
+ let id=localStorage.getItem(WORKSPACE_KEY);
+ if(!id){id=globalThis.crypto?.randomUUID?.()||'00000000-0000-4000-8000-'+hashText(deviceId()).padStart(12,'0').slice(0,12);localStorage.setItem(WORKSPACE_KEY,id)}
+ return id;
+}
+function workspaceShareUrl(){const u=new URL(location.href);u.hash='workspace='+workspaceId();return u.toString()}
+const SYNC_PATHS=[
+ 'family1','family2','powerPrice','salePrices.cookie','salePrices.horn','salePrices.mixed',
+ 'purchase.buyer','purchase.store','purchase.date','planning.hornBatches','planning.cookieBatches',
+ 'planning.cookieKg','planning.chocPerKg','production.cookie','production.horn','production.mixed',
+ 'oven.watts','oven.elapsed','oven.running','oven.startAt','iron.count','iron.wattsEach','iron.elapsed','iron.running','iron.startAt'
+];
+const ARRAY_KEYS=['shopping','saleEntries','energyLogs'];
+function getPath(obj,path){return path.split('.').reduce((v,k)=>v==null?undefined:v[k],obj)}
+function setPath(obj,path,value){const parts=path.split('.');let cur=obj;parts.slice(0,-1).forEach(k=>cur=cur[k]||(cur[k]={}));cur[parts.at(-1)]=deep(value)}
+function same(a,b){return JSON.stringify(a)===JSON.stringify(b)}
+function entityId(kind,item,index){
+ if(item?.id)return String(item.id);
+ if(kind==='shopping')return 'shop-'+hashText(String(item?.name||'artikel').trim().toLocaleLowerCase('de-DE'));
+ const clean={...item};delete clean._updatedAt;delete clean.id;
+ return kind.slice(0,4)+'-'+hashText(JSON.stringify(clean))+'-'+index;
+}
+function ensureSyncShape(state,sourceStamp){
+ const stamp=sourceStamp||state?._sync?.migratedAt||nowIso();
+ state._sync={schema:2,deviceId:deviceId(),migratedAt:stamp,fieldClocks:{},tombstones:{},...(state._sync||{})};
+ state._sync.fieldClocks={...(state._sync.fieldClocks||{})};
+ state._sync.tombstones={...(state._sync.tombstones||{})};
+ ARRAY_KEYS.forEach(kind=>{
+   state._sync.tombstones[kind]={...(state._sync.tombstones[kind]||{})};
+   state[kind]=(state[kind]||[]).map((item,i)=>({...item,id:entityId(kind,item,i),_updatedAt:item._updatedAt||stamp}));
+ });
+ return state;
+}
 let s=load();
+let lastSavedSnapshot=deep(s);
 let saleDraft={cookie:0,horn:0,mixed:0};
-function normalizeState(old, yearOverride){
+function normalizeState(old, yearOverride, sourceStamp){
  const base=deep(defaults), merged={...base,...(old||{})};
  merged.sales={...deep(defaults.sales),...((old&&old.sales)||{})};
  merged.salePrices={...deep(defaults.salePrices),...((old&&old.salePrices)||{})};
@@ -73,7 +125,7 @@ function normalizeState(old, yearOverride){
  if(!old || !old.family2 || old.family2==='Familie 2') merged.family2='Rusche';
  if(!old || old.powerPrice===undefined || Number(old.powerPrice)===0.22) merged.powerPrice=.25;
  if(yearOverride) merged.year=Number(yearOverride);
- return merged;
+ return ensureSyncShape(merged,sourceStamp);
 }
 function load(){
  try{
@@ -81,7 +133,7 @@ function load(){
    const active=Number(localStorage.getItem(ACTIVE_YEAR_KEY)) || Number(legacy?.year) || new Date().getFullYear();
    const archived=JSON.parse(localStorage.getItem(YEAR_KEY_PREFIX+active)||'null');
    const data=archived || legacy || null;
-   const normalized=normalizeState(data,active);
+   const normalized=normalizeState(data,active,data?._sync?.migratedAt||nowIso());
    if(legacy && !archived){
       localStorage.setItem(YEAR_KEY_PREFIX+active,JSON.stringify(normalized));
       localStorage.setItem(ACTIVE_YEAR_KEY,String(active));
@@ -89,10 +141,29 @@ function load(){
    return normalized;
  }catch(e){return normalizeState(null,new Date().getFullYear())}
 }
+function markLocalChanges(previous,current){
+ const stamp=nowIso();
+ current._sync=ensureSyncShape(current,current?._sync?.migratedAt)._sync;
+ SYNC_PATHS.forEach(path=>{if(!same(getPath(previous,path),getPath(current,path)))current._sync.fieldClocks[path]=stamp});
+ ARRAY_KEYS.forEach(kind=>{
+   const before=new Map((previous?.[kind]||[]).map((x,i)=>[entityId(kind,x,i),x]));
+   const after=new Map((current?.[kind]||[]).map((x,i)=>[entityId(kind,x,i),x]));
+   current[kind]=(current[kind]||[]).map((item,i)=>{
+     const id=entityId(kind,item,i),old=before.get(id);
+     return {...item,id,_updatedAt:!old||!same({...old,_updatedAt:undefined},{...item,_updatedAt:undefined})?stamp:(item._updatedAt||old._updatedAt||stamp)};
+   });
+   before.forEach((_,id)=>{if(!after.has(id))current._sync.tombstones[kind][id]=stamp});
+ });
+ current._sync.deviceId=current._sync.deviceId||deviceId();
+}
+function writeLocal(state){
+ localStorage.setItem(KEY,JSON.stringify(state));
+ localStorage.setItem(YEAR_KEY_PREFIX+state.year,JSON.stringify(state));
+ localStorage.setItem(ACTIVE_YEAR_KEY,String(state.year));
+}
 function save(){
- localStorage.setItem(KEY,JSON.stringify(s));
- localStorage.setItem(YEAR_KEY_PREFIX+s.year,JSON.stringify(s));
- localStorage.setItem(ACTIVE_YEAR_KEY,String(s.year));
+ if(!cloudApplying)markLocalChanges(lastSavedSnapshot,s);
+ writeLocal(s);lastSavedSnapshot=deep(s);
  if(cloudReady && !cloudApplying) queueCloudSave();
 }
 function queueCloudSave(){
@@ -103,22 +174,79 @@ async function cloudRequest(path,options={}){
  const headers=Object.assign({
    'apikey':SUPABASE_KEY,
    'Authorization':'Bearer '+SUPABASE_KEY,
+   'x-workspace-id':workspaceId(),
    'Content-Type':'application/json'
  },options.headers||{});
  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,Object.assign({},options,{headers}));
- if(!r.ok)throw new Error('Cloud '+r.status);
+ if(!r.ok){const detail=await r.text();const error=new Error('Cloud '+r.status);error.status=r.status;error.detail=detail;throw error}
  const body=await r.text(); return body?JSON.parse(body):null;
+}
+function newerStamp(a,b){return String(a||'')>=String(b||'')?a:b}
+function mergeStates(localRaw,cloudRaw,year,cloudStamp){
+ const local=normalizeState(localRaw,year,localRaw?._sync?.migratedAt);
+ const remote=normalizeState(cloudRaw,year,cloudRaw?._sync?.migratedAt||cloudStamp);
+ const merged=deep(local),lc=local._sync.fieldClocks||{},rc=remote._sync.fieldClocks||{};
+ SYNC_PATHS.forEach(path=>{
+   const lv=getPath(local,path),rv=getPath(remote,path),lt=lc[path]||'',rt=rc[path]||'';
+   if(rt>lt)setPath(merged,path,rv);
+   else if(!lt&&!rt&&!same(lv,rv)){
+     const def=getPath(normalizeState(null,year,'1970-01-01T00:00:00.000Z'),path);
+     if(same(lv,def)&&!same(rv,def))setPath(merged,path,rv);
+   }
+ });
+ merged._sync.fieldClocks={...rc,...lc};
+ Object.keys(merged._sync.fieldClocks).forEach(path=>merged._sync.fieldClocks[path]=newerStamp(lc[path],rc[path]));
+ ARRAY_KEYS.forEach(kind=>{
+   const tomb={...(remote._sync.tombstones?.[kind]||{}),...(local._sync.tombstones?.[kind]||{})};
+   Object.keys(tomb).forEach(id=>tomb[id]=newerStamp(local._sync.tombstones?.[kind]?.[id],remote._sync.tombstones?.[kind]?.[id]));
+   const items=new Map();
+   [...(remote[kind]||[]),...(local[kind]||[])].forEach((item,i)=>{
+     const id=entityId(kind,item,i),old=items.get(id);
+     if(!old||String(item._updatedAt||'')>=String(old._updatedAt||''))items.set(id,{...item,id});
+   });
+   merged[kind]=[...items.values()].filter(item=>String(tomb[item.id]||'')<String(item._updatedAt||''));
+   merged._sync.tombstones[kind]=tomb;
+ });
+ merged._sync.schema=2;
+ merged._sync.deviceId=[local._sync.deviceId,remote._sync.deviceId].filter(Boolean).sort()[0]||deviceId();
+ merged._sync.migratedAt=[local._sync.migratedAt,remote._sync.migratedAt].filter(Boolean).sort()[0]||nowIso();
+ delete merged._sync.lastLocalChange;
+ return normalizeState(merged,year,merged._sync.migratedAt);
+}
+async function getCloudRow(year){
+ const rows=await cloudRequest('app_state?workspace_id=eq.'+encodeURIComponent(workspaceId())+'&year=eq.'+Number(year)+'&select=data,updated_at&limit=1');
+ return rows?.[0]||null;
+}
+function applyMergedState(next){
+ cloudApplying=true;s=normalizeState(next,next.year,next?._sync?.migratedAt);writeLocal(s);lastSavedSnapshot=deep(s);cloudApplying=false;render();
 }
 async function saveCloudState(){
  if(!cloudReady)return;
+ if(syncInFlight){syncAgain=true;return}
+ syncInFlight=true;
  try{
-   await cloudRequest('app_state?on_conflict=year',{
-     method:'POST',
-     headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-     body:JSON.stringify({year:Number(s.year),data:s,updated_at:new Date().toISOString()})
-   });
-   setSyncStatus('Synchronisiert',true);
- }catch(e){setSyncStatus('Sync-Fehler',false)}
+   const year=Number(s.year);
+   for(let attempt=0;attempt<4;attempt++){
+     const row=await getCloudRow(year);
+     const merged=row?mergeStates(s,row.data,year,row.updated_at):normalizeState(s,year,s._sync?.migratedAt);
+     const stamp=nowIso();let saved;
+     if(row){
+       const filter=encodeURIComponent(row.updated_at);
+       saved=await cloudRequest('app_state?workspace_id=eq.'+encodeURIComponent(workspaceId())+'&year=eq.'+year+'&updated_at=eq.'+filter,{
+         method:'PATCH',headers:{'Prefer':'return=representation'},body:JSON.stringify({data:merged,updated_at:stamp})
+       });
+       if(!saved?.length)continue;
+     }else{
+       try{saved=await cloudRequest('app_state',{method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify({workspace_id:workspaceId(),year,data:merged,updated_at:stamp})})}
+       catch(e){if(e.status===409)continue;throw e}
+     }
+     lastCloudStamp=saved?.[0]?.updated_at||stamp;
+     applyMergedState(mergeStates(s,merged,year,lastCloudStamp));
+     setSyncStatus('Synchronisiert',true);return;
+   }
+   throw new Error('Cloud-Konflikt konnte nicht aufgelöst werden');
+ }catch(e){setSyncStatus(navigator.onLine?'Sync-Fehler – lokal gesichert':'Offline – lokal gespeichert',false)}
+ finally{syncInFlight=false;if(syncAgain){syncAgain=false;queueCloudSave()}}
 }
 function setSyncStatus(label,ok){
  const l=$('syncLabel'),d=document.querySelector('.sync .dot'),c=$('cloudStatus');
@@ -128,15 +256,15 @@ function setSyncStatus(label,ok){
 }
 let cloudPoll=null, lastCloudStamp='';
 async function fetchCloudYear(apply=true){
- const rows=await cloudRequest('app_state?year=eq.'+Number(s.year)+'&select=data,updated_at&limit=1');
- if(rows&&rows[0]){
-   const stamp=rows[0].updated_at||'';
+ const row=await getCloudRow(s.year);
+ if(row){
+   const stamp=row.updated_at||'';
    if(apply && stamp && stamp!==lastCloudStamp){
      lastCloudStamp=stamp;
-     cloudApplying=true;s=normalizeState(rows[0].data,s.year);
-     localStorage.setItem(KEY,JSON.stringify(s));
-     localStorage.setItem(YEAR_KEY_PREFIX+s.year,JSON.stringify(s));
-     cloudApplying=false;render();
+     const merged=mergeStates(s,row.data,s.year,stamp);
+     const cloudNeedsMerge=!same(merged,normalizeState(row.data,s.year,row.data?._sync?.migratedAt||stamp));
+     applyMergedState(merged);
+     if(cloudNeedsMerge)queueCloudSave();
    }
    return true;
  }
@@ -145,15 +273,15 @@ async function fetchCloudYear(apply=true){
 async function initCloud(){
  setSyncStatus('Cloud wird verbunden …',false);
  try{
-   const exists=await fetchCloudYear(false);
    cloudReady=true;
-   if(exists)await fetchCloudYear(true); else await saveCloudState();
+   const exists=await fetchCloudYear(true);
+   if(!exists)await saveCloudState();
    setSyncStatus('Live synchronisiert',true);
    clearInterval(cloudPoll);
    cloudPoll=setInterval(async()=>{
      try{await fetchCloudYear(true);setSyncStatus('Live synchronisiert',true)}
      catch(e){setSyncStatus('Offline – lokal gespeichert',false)}
-   },3000);
+   },2500);
  }catch(e){
    cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false);
  }
@@ -186,7 +314,7 @@ function switchYear(year){
  s=existing||freshYear(year);
  saleDraft={cookie:0,horn:0,mixed:0};
  compareYear=year-1;
- save();
+ lastSavedSnapshot=deep(s);writeLocal(s);
  renderYearSelectors();render();
  if(cloudReady){
    lastCloudStamp='';
@@ -202,6 +330,11 @@ function fmt(ms){let z=Math.floor(ms/1000),h=Math.floor(z/3600),m=Math.floor((z%
 function kwh(d,type){const w=type==='iron'?d.count*d.wattsEach:d.watts;return w/1000*(elapsed(d)/3600000)}
 const powerCost=(d,type)=>kwh(d,type)*s.powerPrice;
 const shopTotal=()=>s.shopping.reduce((a,x)=>a+(Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0))),0);
+function familyExpenses(){
+ const out={[s.family1]:0,[s.family2]:0};let unassigned=0;
+ s.shopping.forEach(x=>{const cost=Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0));if(x.buyer&&Object.hasOwn(out,x.buyer))out[x.buyer]+=cost;else unassigned+=cost});
+ out[s.family1]=(out[s.family1]||0)+unassigned/2;out[s.family2]=(out[s.family2]||0)+unassigned/2;return out;
+}
 function saleTotals(){
  const entries=s.saleEntries||[];
  return entries.reduce((a,e)=>{

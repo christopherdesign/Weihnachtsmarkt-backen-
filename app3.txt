@@ -20,6 +20,10 @@
  $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0));
  $('homeBuckets').textContent=st.cookie+st.horn+st.mixed;
  $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!x.done&&n(x.qty)>0).length;
+ const expenses=familyExpenses(),share=profit()/2;
+ $('family1Label').textContent=s.family1;$('family2Label').textContent=s.family2;
+ $('family1Expenses').textContent=eur(expenses[s.family1]);$('family2Expenses').textContent=eur(expenses[s.family2]);
+ $('family1Payout').textContent=eur(expenses[s.family1]+share)+' inkl. Gewinnanteil';$('family2Payout').textContent=eur(expenses[s.family2]+share)+' inkl. Gewinnanteil';
  renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderCharts();renderYearComparison();renderShop()
 }
 function updateShop(e){
@@ -27,7 +31,7 @@ function updateShop(e){
  const item=s.shopping[i]; if(!item)return;
  if(item.unitPrice===undefined)item.unitPrice=(n(item.qty)>0?n(item.cost)/n(item.qty):0);
  if(a==='del'){s.shopping.splice(i,1)}
- else if(a==='done'){item.done=e.target.checked}
+ else if(a==='done'){item.done=e.target.checked;if(item.done){item.buyer=s.purchase.buyer;item.store=s.purchase.store;item.purchaseDate=s.purchase.date}}
  else if(a==='name'){item.name=e.target.value}
  else if(a==='plus'){item.qty=Math.max(0,Math.round(n(item.qty)))+1;item.done=false}
  else if(a==='minus'){item.qty=Math.max(0,Math.round(n(item.qty))-1)}
@@ -55,7 +59,7 @@ for(let i=1;i<=12;i++){ $('ironCount').insertAdjacentHTML('beforeend',`<option v
 
 function addItem(){
  const name=$('newName').value.trim()||'Neuer Artikel';
- s.shopping.push({name,qty:1,unit:'Stück',unitPrice:n($('newCost').value),cost:n($('newCost').value),done:false});
+ s.shopping.push({id:makeId('shop'),name,qty:1,unit:'Stück',unitPrice:n($('newCost').value),cost:n($('newCost').value),done:false,buyer:s.purchase.buyer,store:s.purchase.store,purchaseDate:s.purchase.date});
  ['newName','newCost'].forEach(id=>$(id).value='');save();render();
 }
 $('addShop').onclick=addItem;
@@ -90,6 +94,7 @@ function stopAndArchiveEnergy(device){
  const a=localDateTime(started),b=localDateTime(ended);
  s.energyLogs=s.energyLogs||[];
  s.energyLogs.push({
+   id:makeId('energy'),
    device,date:a.date,start:a.time,end:b.time,
    ironCount:device==='iron'?(n(d.count)||1):undefined,
    watts:device==='iron'?(n(d.count)||1)*n(d.wattsEach):n(d.watts),
@@ -135,7 +140,7 @@ $('saveSale').onclick=()=>{
  const date=selectedSaleDate();
  s.saleEntries=s.saleEntries||[];
  s.saleEntries.push({
-   id:'sale-'+Date.now()+'-'+Math.random().toString(36).slice(2,7),date,
+   id:makeId('sale'),date,soldAt:date+'T'+two(new Date().getHours())+':'+two(new Date().getMinutes())+':'+two(new Date().getSeconds()),createdAt:nowIso(),
    cookieQty:saleDraft.cookie,cookiePrice:n(s.salePrices.cookie),
    hornQty:saleDraft.horn,hornPrice:n(s.salePrices.horn),
    mixedQty:saleDraft.mixed,mixedPrice:n(s.salePrices.mixed)
@@ -154,7 +159,7 @@ $('addEnergyLog').onclick=()=>{
  const device=$('logDevice').value,date=$('logDate').value,start=$('logStart').value,end=$('logEnd').value,ironCount=n($('logIronCount').value)||1;
  if(!date||!start||!end)return alert('Bitte Datum, Start- und Endzeit auswählen.');
  s.energyLogs=s.energyLogs||[];s.energyLogs.push({
-   device,date,start,end,ironCount,
+   id:makeId('energy'),device,date,start,end,ironCount,
    watts:device==='iron'?ironCount*n(s.iron.wattsEach):n(s.oven.watts),
    powerPrice:n(s.powerPrice),createdAt:new Date().toISOString()
  });
@@ -165,5 +170,10 @@ $('energyLogList').onclick=e=>{if(e.target.dataset.logdel!==undefined){s.energyL
 $('logDate').value=new Date().toISOString().slice(0,10);
 
 $('exportBtn').onclick=()=>{const b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`weihnachtsmarkt-backen-${s.year}.json`;a.click();URL.revokeObjectURL(a.href)};
-$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{s={...deep(defaults),...JSON.parse(await e.target.files[0].text())};save();render()}catch{alert('Datei konnte nicht gelesen werden.')}};
-$('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? And
+$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const incoming=normalizeState(JSON.parse(await e.target.files[0].text()),s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
+$('copySyncLink').onclick=async()=>{
+ const link=workspaceShareUrl(),hint=$('syncShareHint');
+ try{await navigator.clipboard.writeText(link);hint.textContent='Freigabelink kopiert – jetzt auf dem zweiten Handy öffnen.'}
+ catch(e){prompt('Diesen Link auf dem zweiten Handy öffnen:',link)}
+};
+$('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? Andere Jahre bleiben erhalten.')){const y=s.year;s=freshYear(y);save();render()}};
