@@ -28,6 +28,7 @@ const defaults={
  sales:{cookieMade:0,cookieSold:0,cookiePrice:0,hornMade:0,hornSold:0,hornPrice:0,mixedSold:0,mixedPrice:0},
  energyLogs:[],
  saleEntries:[],
+ purchaseEntries:[],
  oven:{watts:3000,elapsed:0,running:false,startAt:null},
  iron:{count:1,wattsEach:800,elapsed:0,running:false,startAt:null},
  machine:{watts:1000,elapsed:0,running:false,startAt:null},
@@ -64,7 +65,7 @@ const SYNC_PATHS=[
  'oven.watts','oven.elapsed','oven.running','oven.startAt','iron.count','iron.wattsEach','iron.elapsed','iron.running','iron.startAt',
  'machine.watts','machine.elapsed','machine.running','machine.startAt','stove.watts','stove.elapsed','stove.running','stove.startAt'
 ];
-const ARRAY_KEYS=['shopping','saleEntries','energyLogs'];
+const ARRAY_KEYS=['shopping','saleEntries','energyLogs','purchaseEntries'];
 function getPath(obj,path){return path.split('.').reduce((v,k)=>v==null?undefined:v[k],obj)}
 function setPath(obj,path,value){const parts=path.split('.');let cur=obj;parts.slice(0,-1).forEach(k=>cur=cur[k]||(cur[k]={}));cur[parts.at(-1)]=deep(value)}
 function same(a,b){return JSON.stringify(a)===JSON.stringify(b)}
@@ -88,6 +89,7 @@ function ensureSyncShape(state,sourceStamp){
 let s=load();
 let lastSavedSnapshot=deep(s);
 let saleDraft={cookie:0,horn:0,mixed:0};
+let pendingReceiptPhoto=null;
 function normalizeState(old, yearOverride, sourceStamp){
  const base=deep(defaults), merged={...base,...(old||{})};
  merged.sales={...deep(defaults.sales),...((old&&old.sales)||{})};
@@ -107,6 +109,7 @@ function normalizeState(old, yearOverride, sourceStamp){
  merged.shopping=merged.shopping.map(x=>({...x,qty:Math.max(0,Math.round(n(x.qty))),unitPrice:x.unitPrice!==undefined?n(x.unitPrice):(n(x.qty)>0?n(x.cost)/n(x.qty):0)}));
  merged.energyLogs=Array.isArray(old&&old.energyLogs)?old.energyLogs:[];
  merged.saleEntries=Array.isArray(old&&old.saleEntries)?old.saleEntries:[];
+ merged.purchaseEntries=Array.isArray(old&&old.purchaseEntries)?old.purchaseEntries:[];
  merged.production={...deep(defaults.production),...((old&&old.production)||{})};
  if(!merged.saleEntries.length && old && old.sales){
    const hasOld=n(old.sales.cookieSold)||n(old.sales.hornSold)||n(old.sales.mixedSold);
@@ -318,6 +321,7 @@ function switchYear(year){
  const existing=archivedYear(year);
  s=existing||freshYear(year);
  saleDraft={cookie:0,horn:0,mixed:0};
+ pendingReceiptPhoto=null;
  compareYear=year-1;
  lastSavedSnapshot=deep(s);writeLocal(s);
  renderYearSelectors();render();
@@ -334,10 +338,14 @@ function stop(d){if(d.running){d.elapsed+=Date.now()-d.startAt;d.running=false;d
 function fmt(ms){let z=Math.floor(ms/1000),h=Math.floor(z/3600),m=Math.floor((z%3600)/60),q=z%60;return [h,m,q].map(x=>String(x).padStart(2,'0')).join(':')}
 function kwh(d,type){const w=type==='iron'?d.count*d.wattsEach:d.watts;return w/1000*(elapsed(d)/3600000)}
 const powerCost=(d,type)=>kwh(d,type)*s.powerPrice;
-const shopTotal=()=>s.shopping.reduce((a,x)=>a+(Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0))),0);
+const isLegacyPurchase=item=>Boolean(item?.done&&!item?.purchaseEntryId&&item?.pendingPurchase!==true);
+const itemCost=x=>Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0));
+const shopTotalFor=state=>(state.purchaseEntries||[]).reduce((sum,e)=>sum+n(e.total),0)+(state.shopping||[]).filter(isLegacyPurchase).reduce((sum,x)=>sum+itemCost(x),0);
+const shopTotal=()=>shopTotalFor(s);
 function familyExpenses(){
  const out={[s.family1]:0,[s.family2]:0};let unassigned=0;
- s.shopping.forEach(x=>{const cost=Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0));if(x.buyer&&Object.hasOwn(out,x.buyer))out[x.buyer]+=cost;else unassigned+=cost});
+ (s.purchaseEntries||[]).forEach(e=>{const cost=n(e.total);if(e.buyer&&Object.hasOwn(out,e.buyer))out[e.buyer]+=cost;else unassigned+=cost});
+ s.shopping.filter(isLegacyPurchase).forEach(x=>{const cost=itemCost(x);if(x.buyer&&Object.hasOwn(out,x.buyer))out[x.buyer]+=cost;else unassigned+=cost});
  out[s.family1]=(out[s.family1]||0)+unassigned/2;out[s.family2]=(out[s.family2]||0)+unassigned/2;return out;
 }
 function saleTotals(){
@@ -393,5 +401,5 @@ function esc(t){return String(t).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;',
 function renderShop(){
  const html=s.shopping.map(shopHTML).join('');
  if($('homeShopList'))$('homeShopList').innerHTML=html;$('fullShopList').innerHTML=html;
- const open=s.shopping.filter(x=>!x.done).length,done=s.shopping.length-open;
+ const done=s.shopping.filter(isLegacyPurchase).length,open=s.shopping.length-done;
  if($('needCount'))$('needCount').textC

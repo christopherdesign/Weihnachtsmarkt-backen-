@@ -24,7 +24,7 @@
  const todayManual=(s.energyLogs||[]).filter(x=>x.date===today).reduce((a,l)=>a+energyLogCost(l),0);
  $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0)+(s.machine.running?powerCost(s.machine,'machine'):0)+(s.stove.running?powerCost(s.stove,'stove'):0));
  $('homeBuckets').textContent=st.cookie+st.horn+st.mixed;
- $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!x.done&&n(x.qty)>0).length;
+ $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!isLegacyPurchase(x)&&n(x.qty)>0).length;
  const stock=stockTotals();
  $('homeStockTotal').textContent=stock.cookie+stock.horn+stock.mixed;
  [['Cookie',stock.cookie],['Horn',stock.horn],['Mixed',stock.mixed]].forEach(([kind,value])=>{const el=$('homeStock'+kind);el.textContent=value;el.className='stocknum '+stockClass(value)});
@@ -32,14 +32,17 @@
  $('family1Label').textContent=s.family1;$('family2Label').textContent=s.family2;
  $('family1Expenses').textContent=eur(expenses[s.family1]);$('family2Expenses').textContent=eur(expenses[s.family2]);
  $('family1Payout').textContent=eur(expenses[s.family1]+share)+' inkl. Gewinnanteil';$('family2Payout').textContent=eur(expenses[s.family2]+share)+' inkl. Gewinnanteil';
- renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderCharts();renderYearComparison();renderShop()
+ renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderPurchaseHistory();renderCharts();renderYearComparison();renderShop()
 }
 function updateShop(e){
  const i=Number(e.target.dataset.i),a=e.target.dataset.action;if(!Number.isInteger(i)||!a)return;
  const item=s.shopping[i]; if(!item)return;
  if(item.unitPrice===undefined)item.unitPrice=(n(item.qty)>0?n(item.cost)/n(item.qty):0);
  if(a==='del'){s.shopping.splice(i,1)}
- else if(a==='done'){item.done=e.target.checked;if(item.done){item.buyer=s.purchase.buyer;item.store=s.purchase.store;item.purchaseDate=s.purchase.date}}
+ else if(a==='done'){
+   item.done=e.target.checked;item.pendingPurchase=e.target.checked;
+   if(item.done){item.buyer=s.purchase.buyer;item.store=s.purchase.store;item.purchaseDate=s.purchase.date}
+ }
  else if(a==='name'){item.name=e.target.value}
  else if(a==='plus'){item.qty=Math.max(0,Math.round(n(item.qty)))+1;item.done=false}
  else if(a==='minus'){item.qty=Math.max(0,Math.round(n(item.qty))-1)}
@@ -72,6 +75,70 @@ function addItem(){
 }
 $('addShop').onclick=addItem;
 if($('homeAdd'))$('homeAdd').onclick=()=>{openPage(document.querySelector('[data-page="shop"]'));$('newName').focus()};
+
+function imageFromFile(file){
+ return new Promise((resolve,reject)=>{
+   const reader=new FileReader();
+   reader.onerror=()=>reject(new Error('Foto konnte nicht gelesen werden.'));
+   reader.onload=()=>{
+     const img=new Image();img.onerror=()=>reject(new Error('Das ausgewählte Bild ist ungültig.'));
+     img.onload=()=>resolve(img);img.src=reader.result;
+   };
+   reader.readAsDataURL(file);
+ });
+}
+async function compressReceiptPhoto(file){
+ if(!file?.type?.startsWith('image/'))throw new Error('Bitte ein Bild als Bon-Foto auswählen.');
+ if(file.size>15*1024*1024)throw new Error('Das Foto ist zu groß. Bitte ein Bild unter 15 MB auswählen.');
+ const img=await imageFromFile(file),maxSide=1400;
+ let scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+ let width=Math.max(1,Math.round(img.naturalWidth*scale)),height=Math.max(1,Math.round(img.naturalHeight*scale));
+ let quality=.78,dataUrl='';
+ for(let attempt=0;attempt<9;attempt++){
+   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+   const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(img,0,0,width,height);
+   dataUrl=canvas.toDataURL('image/jpeg',quality);
+   if(dataUrl.length<=180000)break;
+   if(quality>.48)quality-=.08;else{width=Math.max(500,Math.round(width*.82));height=Math.max(1,Math.round(img.naturalHeight*(width/img.naturalWidth)));}
+ }
+ if(dataUrl.length>260000)throw new Error('Das Foto konnte nicht ausreichend verkleinert werden. Bitte den Bon enger fotografieren.');
+ return {dataUrl,name:file.name||'Bon-Foto.jpg',originalSize:file.size};
+}
+function purchaseLineTotal(item){
+ const qty=Math.max(0,Math.round(n(item.qty))),price=n(item.unitPrice!==undefined?item.unitPrice:(qty>0?n(item.cost)/qty:0));
+ return qty*price;
+}
+function localToday(){
+ const d=new Date();return `${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`;
+}
+$('receiptPhoto').onchange=async e=>{
+ const file=e.target.files?.[0],status=$('purchaseSaveStatus');
+ if(!file){pendingReceiptPhoto=null;renderPurchaseDraft();return}
+ status.textContent='Bon-Foto wird vorbereitet …';
+ try{pendingReceiptPhoto=await compressReceiptPhoto(file);status.textContent='Bon-Foto ist bereit zum Speichern.'}
+ catch(error){pendingReceiptPhoto=null;e.target.value='';status.textContent=error.message;alert(error.message)}
+ renderPurchaseDraft();
+};
+$('removeReceiptPhoto').onclick=()=>{pendingReceiptPhoto=null;$('receiptPhoto').value='';$('purchaseSaveStatus').textContent='Bon-Foto entfernt.';renderPurchaseDraft()};
+$('savePurchase').onclick=async()=>{
+ const selected=s.shopping.filter(item=>item.done&&item.pendingPurchase&&Math.max(0,Math.round(n(item.qty)))>0);
+ const status=$('purchaseSaveStatus');
+ if(!selected.length){status.textContent='Bitte mindestens einen gekauften Artikel markieren.';alert('Bitte mindestens einen Artikel über das Häkchen als gekauft markieren.');return}
+ const date=s.purchase.date||localToday(),createdAt=nowIso(),entryId=makeId('purchase');
+ const items=selected.map(item=>({name:item.name,qty:Math.max(0,Math.round(n(item.qty))),unit:item.unit||'Stück',unitPrice:n(item.unitPrice),total:purchaseLineTotal(item)}));
+ const entry={id:entryId,date,buyer:s.purchase.buyer,store:s.purchase.store.trim(),items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt};
+ s.purchaseEntries=s.purchaseEntries||[];s.purchaseEntries.push(entry);
+ selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyer=s.purchase.buyer;item.store=s.purchase.store.trim()});
+ s.purchase.date=date;
+ try{
+   save();pendingReceiptPhoto=null;$('receiptPhoto').value='';render();status.textContent='Einkauf gespeichert und im Nachweis protokolliert.';
+   if(cloudReady)await saveCloudState();
+ }catch(error){s.purchaseEntries=s.purchaseEntries.filter(x=>x.id!==entryId);selected.forEach((item,index)=>{const saved=items[index];item.qty=saved.qty;item.unitPrice=saved.unitPrice;item.cost=saved.total;item.done=true;item.pendingPurchase=true});status.textContent='Einkauf konnte nicht gespeichert werden.';alert('Der Einkauf konnte nicht gespeichert werden. Bitte Bon-Foto entfernen oder kleiner aufnehmen.');}
+};
+$('purchaseHistory').onclick=e=>{
+ const id=e.target.dataset.purchasedel;if(!id)return;
+ if(confirm('Diesen Einkaufsnachweis wirklich löschen? Der Betrag wird dann auch aus den Kosten entfernt.')){s.purchaseEntries=s.purchaseEntries.filter(x=>x.id!==id);save();render()}
+};
 
 function bind(id,fn){$(id).addEventListener('input',e=>{fn(e.target.value);save();render()})}
 

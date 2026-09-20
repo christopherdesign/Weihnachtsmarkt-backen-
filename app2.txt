@@ -99,6 +99,42 @@ function renderSalesHistory(){
    </div>`;
  }).join(''):'<div class="muted">Noch keine Verkäufe gespeichert.</div>';
 }
+function purchaseDateLabel(value){
+ if(!value)return 'Ohne Datum';
+ const d=new Date(value+'T12:00:00');
+ return Number.isNaN(d.getTime())?esc(value):d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function safeReceiptUrl(value){
+ const url=String(value||'');
+ return url.length<=300000&&/^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(url)?url:'';
+}
+function renderPurchaseDraft(){
+ const preview=$('receiptPreview'),name=$('receiptFileName'),remove=$('removeReceiptPhoto');
+ if(!preview||!name||!remove)return;
+ if(pendingReceiptPhoto?.dataUrl){
+   preview.src=pendingReceiptPhoto.dataUrl;preview.hidden=false;
+   name.textContent=pendingReceiptPhoto.name||'Bon-Foto ausgewählt';remove.hidden=false;
+ }else{
+   preview.removeAttribute('src');preview.hidden=true;
+   name.textContent='Noch kein Bon-Foto ausgewählt';remove.hidden=true;
+ }
+}
+function renderPurchaseHistory(){
+ const box=$('purchaseHistory');if(!box)return;
+ const entries=[...(s.purchaseEntries||[])].sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
+ const itemCount=entries.reduce((sum,e)=>sum+(e.items||[]).reduce((q,item)=>q+Math.max(0,Math.round(n(item.qty))),0),0);
+ if($('purchaseEntryCount'))$('purchaseEntryCount').textContent=entries.length+' Einkäufe · '+itemCount+' Artikel';
+ box.innerHTML=entries.length?entries.map(e=>{
+   const lines=(e.items||[]).map(item=>`<div class="purchase-line"><span>${Math.max(0,Math.round(n(item.qty)))} × ${esc(item.name||'Artikel')}</span><strong>${eur(n(item.total))}</strong></div>`).join('');
+   const receiptUrl=safeReceiptUrl(e.receiptPhoto);
+   const photo=receiptUrl?`<a class="receipt-link" href="${receiptUrl}" target="_blank" rel="noopener"><img src="${receiptUrl}" alt="Bonfoto"><span>Bon vergrößern</span></a>`:'<div class="muted">Kein Bonfoto hinterlegt</div>';
+   return `<article class="purchase-entry">
+    <div class="salehead"><div><strong>${purchaseDateLabel(e.date)}</strong><div class="muted">${esc(e.buyer||'Nicht zugeordnet')}${e.store?' · '+esc(e.store):''}${e.createdAt?' · gespeichert '+new Date(e.createdAt).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div></div><button class="danger" data-purchasedel="${esc(e.id)}" type="button">×</button></div>
+    <div class="purchase-proof"><div>${lines||'<div class="muted">Keine Artikel im Nachweis</div>'}<div class="sep"></div><strong>Gesamt: ${eur(e.total)}</strong></div>${photo}</div>
+   </article>`;
+ }).join(''):'<div class="muted">Noch kein Einkauf gespeichert. Markiere gekaufte Artikel, füge bei Bedarf ein Bonfoto hinzu und tippe auf „Einkauf speichern“.</div>';
+ renderPurchaseDraft();
+}
 function drawBarChart(canvas, labels, values){
  if(!canvas)return;
  const ctx=canvas.getContext('2d'),w=canvas.width,h=canvas.height;
@@ -123,7 +159,7 @@ function metricsForState(state){
    a.revenue+=n(e.cookieQty)*n(e.cookiePrice)+n(e.hornQty)*n(e.hornPrice)+n(e.mixedQty)*n(e.mixedPrice);
    return a;
  },{cookie:0,horn:0,mixed:0,revenue:0});
- const shop=(state.shopping||[]).reduce((a,x)=>a+(Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0))),0);
+ const shop=shopTotalFor(state);
  const timerElapsed=d=>(d?.elapsed||0)+(d?.running&&d?.startAt?Date.now()-d.startAt:0);
  const ovenKwh=(n(state.oven?.watts)/1000)*(timerElapsed(state.oven)/3600000);
  const ironKwh=((n(state.iron?.count)||1)*(n(state.iron?.wattsEach)||800)/1000)*(timerElapsed(state.iron)/3600000);
