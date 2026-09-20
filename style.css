@@ -18,8 +18,9 @@ h1{font-size:25px;margin:0 0 4px}header p{margin:0;opacity:.9}
 main{padding:10px 12px 36px}.page{display:none}.page.active{display:block}
 .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
 .card{grid-column:span 12;background:var(--card);border:1px solid var(--line);border-radius:19px;padding:15px;box-shadow:var(--shadow)}
-.half{grid-column:span 6}.third{grid-column:span 4}
-@media(max-width:760px){.half,.third{grid-column:span 12}}
+.half{grid-column:span 6}.third{grid-column:span 4}.quarter{grid-column:span 3}
+@media(max-width:900px){.quarter{grid-column:span 6}}
+@media(max-width:760px){.half,.third,.quarter{grid-column:span 12}}
 h2{font-size:19px;margin:0 0 13px}h3{font-size:16px;margin:0 0 10px}
 .row{display:grid;grid-template-columns:repeat(12,1fr);gap:8px;align-items:end}
 .c2{grid-column:span 2}.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c8{grid-column:span 8}.c10{grid-column:span 10}.c12{grid-column:span 12}
@@ -53,7 +54,8 @@ button{border:0;border-radius:12px;padding:10px 13px;font-size:14px;font-weight:
 .syncpanel{border:1px dashed #d3b2b7;background:#fffafa;border-radius:15px;padding:12px}
 footer{text-align:center;color:var(--muted);font-size:12px;padding:18px}
 
-.quickstart{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+.quickstart{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:900px){.quickstart{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.quickstart{grid-template-columns:1fr}}
 .quickbtn{padding:16px;border-radius:16px;font-size:16px;font-weight:900}
 .quickbtn small{display:block;font-size:11px;font-weight:700;opacity:.85;margin-top:3px}

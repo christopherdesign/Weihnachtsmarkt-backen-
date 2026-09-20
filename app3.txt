@@ -4,22 +4,25 @@
  $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('homeCostsTotal').textContent=eur(shopTotal()+totalEnergy());$('famKpi').textContent=eur(profit()/2);
  const st=saleTotals();$('cookieHome').textContent=st.cookie;$('hornHome').textContent=st.horn;$('mixedHome').textContent=st.mixed;
  $('cookieHomeRev').textContent=eur(cookieRevenue())+' Umsatz';$('hornHomeRev').textContent=eur(hornRevenue())+' Umsatz';$('mixedHomeRev').textContent=eur(mixedRevenue())+' Umsatz';
- $('ovenWatts').value=s.oven.watts;$('machineWatts').value=s.machine.watts;$('powerPrice').value=s.powerPrice;
+ $('powerPrice').value=s.powerPrice;
+ $('settingOvenWatts').value=s.oven.watts;$('settingIronWatts').value=s.iron.wattsEach;$('settingMachineWatts').value=s.machine.watts;$('settingStoveWatts').value=s.stove.watts;
  $('settingCookiePrice').value=s.salePrices.cookie;$('settingHornPrice').value=s.salePrices.horn;$('settingMixedPrice').value=s.salePrices.mixed;
- $('ironCount').value=s.iron.count;$('ironPower').textContent=(s.iron.count*s.iron.wattsEach).toLocaleString('de-DE')+' W';
- $('ovenTimer').textContent=fmt(elapsed(s.oven));$('ironTimer').textContent=fmt(elapsed(s.iron));$('machineTimer').textContent=fmt(elapsed(s.machine));
+ $('ironCount').value=s.iron.count;$('ovenPower').textContent=n(s.oven.watts).toLocaleString('de-DE')+' W';$('ironPower').textContent=(s.iron.count*s.iron.wattsEach).toLocaleString('de-DE')+' W';$('machinePower').textContent=n(s.machine.watts).toLocaleString('de-DE')+' W';$('stovePower').textContent=n(s.stove.watts).toLocaleString('de-DE')+' W';
+ $('ovenTimer').textContent=fmt(elapsed(s.oven));$('ironTimer').textContent=fmt(elapsed(s.iron));$('machineTimer').textContent=fmt(elapsed(s.machine));$('stoveTimer').textContent=fmt(elapsed(s.stove));
  $('ovenKwh').textContent=kwh(s.oven,'oven').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
  $('ironKwh').textContent=kwh(s.iron,'iron').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
  $('machineKwh').textContent=kwh(s.machine,'machine').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
- $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));$('machineCost').textContent=eur(powerCost(s.machine,'machine'));
- $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;$('machineStart').disabled=s.machine.running;$('machineStop').disabled=!s.machine.running;
+ $('stoveKwh').textContent=kwh(s.stove,'stove').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));$('machineCost').textContent=eur(powerCost(s.machine,'machine'));$('stoveCost').textContent=eur(powerCost(s.stove,'stove'));
+ $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;$('machineStart').disabled=s.machine.running;$('machineStop').disabled=!s.machine.running;$('stoveStart').disabled=s.stove.running;$('stoveStop').disabled=!s.stove.running;
  $('year').value=s.year;$('family1').value=s.family1;$('family2').value=s.family2;
- $('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit';
- $('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit';
+ $('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit · '+n(s.oven.watts).toLocaleString('de-DE')+' W';
+ $('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit · '+n(s.iron.wattsEach).toLocaleString('de-DE')+' W je Eisen';
  $('homeMachineState').textContent=s.machine.running?'läuft '+fmt(elapsed(s.machine)):'bereit · '+n(s.machine.watts).toLocaleString('de-DE')+' W';
+ $('homeStoveState').textContent=s.stove.running?'läuft '+fmt(elapsed(s.stove)):'bereit · '+n(s.stove.watts).toLocaleString('de-DE')+' W';
  const today=new Date().toISOString().slice(0,10);
  const todayManual=(s.energyLogs||[]).filter(x=>x.date===today).reduce((a,l)=>a+energyLogCost(l),0);
- $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0)+(s.machine.running?powerCost(s.machine,'machine'):0));
+ $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0)+(s.machine.running?powerCost(s.machine,'machine'):0)+(s.stove.running?powerCost(s.stove,'stove'):0));
  $('homeBuckets').textContent=st.cookie+st.horn+st.mixed;
  $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!x.done&&n(x.qty)>0).length;
  const stock=stockTotals();
@@ -84,8 +87,10 @@ bind('powerPrice',v=>s.powerPrice=n(v));
 bind('settingCookiePrice',v=>s.salePrices.cookie=n(v));
 bind('settingHornPrice',v=>s.salePrices.horn=n(v));
 bind('settingMixedPrice',v=>s.salePrices.mixed=n(v));
-bind('ovenWatts',v=>s.oven.watts=n(v));
-bind('machineWatts',v=>s.machine.watts=n(v));
+bind('settingOvenWatts',v=>s.oven.watts=Math.max(1,n(v)));
+bind('settingIronWatts',v=>s.iron.wattsEach=Math.max(1,n(v)));
+bind('settingMachineWatts',v=>s.machine.watts=Math.max(1,n(v)));
+bind('settingStoveWatts',v=>s.stove.watts=Math.max(1,n(v)));
 $('ironCount').onchange=e=>{s.iron.count=Number(e.target.value);save();render()};
 
 function two(v){return String(v).padStart(2,'0')}
@@ -93,7 +98,7 @@ function localDateTime(ms){
  const d=new Date(ms);
  return {date:`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`,time:`${two(d.getHours())}:${two(d.getMinutes())}`};
 }
-function energyDeviceState(device){return device==='iron'?s.iron:device==='machine'?s.machine:s.oven}
+function energyDeviceState(device){return device==='iron'?s.iron:device==='machine'?s.machine:device==='stove'?s.stove:s.oven}
 function stopAndArchiveEnergy(device){
  const d=energyDeviceState(device);
  if(!d.running)return;
@@ -118,6 +123,8 @@ $('ironStart').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.start
 $('ironStop').onclick=()=>{stopAndArchiveEnergy('iron');save();render()};$('ironReset').onclick=()=>{if(confirm('Hörncheneisen-Zeit auf 0 setzen?')){s.iron.elapsed=0;s.iron.running=false;s.iron.startAt=null;save();render()}};
 $('machineStart').onclick=()=>{if(!s.machine.running){s.machine.running=true;s.machine.startAt=Date.now();save();render()}};
 $('machineStop').onclick=()=>{stopAndArchiveEnergy('machine');save();render()};$('machineReset').onclick=()=>{if(confirm('Küchenmaschinen-Zeit auf 0 setzen?')){s.machine.elapsed=0;s.machine.running=false;s.machine.startAt=null;save();render()}};
+$('stoveStart').onclick=()=>{if(!s.stove.running){s.stove.running=true;s.stove.startAt=Date.now();save();render()}};
+$('stoveStop').onclick=()=>{stopAndArchiveEnergy('stove');save();render()};$('stoveReset').onclick=()=>{if(confirm('Herd-Zeit auf 0 setzen?')){s.stove.elapsed=0;s.stove.running=false;s.stove.startAt=null;save();render()}};
 
 
 
@@ -166,6 +173,7 @@ $('salesHistory').onclick=e=>{
 $('quickOven').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
 $('quickIron').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
 $('quickMachine').onclick=()=>{if(!s.machine.running){s.machine.running=true;s.machine.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('quickStove').onclick=()=>{if(!s.stove.running){s.stove.running=true;s.stove.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
 $('homeToSales').onclick=()=>openPage(document.querySelector('[data-page="sales"]'));
 $('logDevice').onchange=()=>{$('logIronCountWrap').hidden=$('logDevice').value!=='iron'};
 $('addEnergyLog').onclick=()=>{

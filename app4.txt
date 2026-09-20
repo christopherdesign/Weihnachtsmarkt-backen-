@@ -1,4 +1,4 @@
-setInterval(()=>{if(s.oven.running||s.iron.running||s.machine.running)render()},1000);
+setInterval(()=>{if(s.oven.running||s.iron.running||s.machine.running||s.stove.running)render()},1000);
 
 compareYear=Number(s.year)-1;
 renderYearSelectors();

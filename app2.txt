@@ -23,7 +23,7 @@ function renderEnergyLogs(){
    const ka=(a.date||'')+'T'+(a.start||'00:00'),kb=(b.date||'')+'T'+(b.start||'00:00');
    return kb.localeCompare(ka);
  });
- const names={oven:'Backofen',iron:'Hörncheneisen',machine:'Küchenmaschine'};
+ const names={oven:'Backofen',iron:'Hörncheneisen',machine:'Küchenmaschine',stove:'Herd'};
  box.innerHTML=logs.length?logs.map(l=>`<div class="logrow"><span>${names[l.device]||'Gerät'}</span><span>${l.date?new Date(l.date+'T12:00:00').toLocaleDateString('de-DE'):''}</span><span>${l.start||''}–${l.end||''}</span><span>${energyLogKwh(l).toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})} kWh · ${eur(energyLogCost(l))}</span><button class="danger" data-logdel="${l._i}">×</button></div>`).join(''):'<div class="muted">Noch keine Energiezeiten erfasst.</div>';
 }
 
@@ -128,13 +128,14 @@ function metricsForState(state){
  const ovenKwh=(n(state.oven?.watts)/1000)*(timerElapsed(state.oven)/3600000);
  const ironKwh=((n(state.iron?.count)||1)*(n(state.iron?.wattsEach)||800)/1000)*(timerElapsed(state.iron)/3600000);
  const machineKwh=((n(state.machine?.watts)||1000)/1000)*(timerElapsed(state.machine)/3600000);
+ const stoveKwh=((n(state.stove?.watts)||1400)/1000)*(timerElapsed(state.stove)/3600000);
  const logs=(state.energyLogs||[]).reduce((a,l)=>{
    let mins=n(l.durationMs)>0?n(l.durationMs)/60000:0;
    if(!mins&&l.start&&l.end){const [sh,sm]=l.start.split(':').map(Number),[eh,em]=l.end.split(':').map(Number);mins=(eh*60+em)-(sh*60+sm);if(mins<0)mins+=1440}
    const watts=n(l.watts)||deviceWatts(l.device,state,l.ironCount);
    return a+(watts/1000)*(mins/60);
  },0);
- const energy=(ovenKwh+ironKwh+machineKwh+logs)*n(state.powerPrice);
+ const energy=(ovenKwh+ironKwh+machineKwh+stoveKwh+logs)*n(state.powerPrice);
  return {revenue:sales.revenue,shop,energy,profit:sales.revenue-shop-energy,buckets:sales.cookie+sales.horn+sales.mixed,cookie:sales.cookie,horn:sales.horn,mixed:sales.mixed};
 }
 function deltaInfo(cur,prev,invert=false){

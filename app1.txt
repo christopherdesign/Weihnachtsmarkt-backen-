@@ -30,7 +30,8 @@ const defaults={
  saleEntries:[],
  oven:{watts:3000,elapsed:0,running:false,startAt:null},
  iron:{count:1,wattsEach:800,elapsed:0,running:false,startAt:null},
- machine:{watts:1000,elapsed:0,running:false,startAt:null}
+ machine:{watts:1000,elapsed:0,running:false,startAt:null},
+ stove:{watts:1400,elapsed:0,running:false,startAt:null}
 };
 const n=v=>Number(String(v??'').replace(',','.'))||0;
 function deep(x){return JSON.parse(JSON.stringify(x))}
@@ -61,7 +62,7 @@ const SYNC_PATHS=[
  'purchase.buyer','purchase.store','purchase.date','planning.hornBatches','planning.cookieBatches',
  'planning.cookieKg','planning.chocPerKg','production.cookie','production.horn','production.mixed',
  'oven.watts','oven.elapsed','oven.running','oven.startAt','iron.count','iron.wattsEach','iron.elapsed','iron.running','iron.startAt',
- 'machine.watts','machine.elapsed','machine.running','machine.startAt'
+ 'machine.watts','machine.elapsed','machine.running','machine.startAt','stove.watts','stove.elapsed','stove.running','stove.startAt'
 ];
 const ARRAY_KEYS=['shopping','saleEntries','energyLogs'];
 function getPath(obj,path){return path.split('.').reduce((v,k)=>v==null?undefined:v[k],obj)}
@@ -99,6 +100,7 @@ function normalizeState(old, yearOverride, sourceStamp){
  merged.oven={...deep(defaults.oven),...((old&&old.oven)||{})};
  merged.iron={...deep(defaults.iron),...((old&&old.iron)||{})};
  merged.machine={...deep(defaults.machine),...((old&&old.machine)||{})};
+ merged.stove={...deep(defaults.stove),...((old&&old.stove)||{})};
  merged.purchase={...deep(defaults.purchase),...((old&&old.purchase)||{})};
  merged.planning={...deep(defaults.planning),...((old&&old.planning)||{})};
  if(!Array.isArray(merged.shopping)) merged.shopping=deep(defaults.shopping);
@@ -362,6 +364,7 @@ function logMinutes(log){
 function deviceWatts(device,state=s,ironCount){
  if(device==='iron')return (n(ironCount)||n(state.iron?.count)||1)*(n(state.iron?.wattsEach)||800);
  if(device==='machine')return n(state.machine?.watts)||1000;
+ if(device==='stove')return n(state.stove?.watts)||1400;
  return n(state.oven?.watts)||3000;
 }
 function energyLogKwh(log){
@@ -372,7 +375,7 @@ function energyLogKwh(log){
 function energyLogCost(log){return energyLogKwh(log)*(log.powerPrice!==undefined?n(log.powerPrice):s.powerPrice)}
 function energyLogsCost(){return (s.energyLogs||[]).reduce((a,l)=>a+energyLogCost(l),0)}
 
-const totalEnergy=()=>powerCost(s.oven,'oven')+powerCost(s.iron,'iron')+powerCost(s.machine,'machine')+energyLogsCost();
+const totalEnergy=()=>powerCost(s.oven,'oven')+powerCost(s.iron,'iron')+powerCost(s.machine,'machine')+powerCost(s.stove,'stove')+energyLogsCost();
 const profit=()=>revenue()-shopTotal()-totalEnergy();
 
 function shopHTML(x,i){
