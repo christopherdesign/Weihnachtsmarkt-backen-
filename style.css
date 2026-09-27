@@ -147,6 +147,13 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
 .energy-device{border-top:3px solid #2c7a5d}.money{letter-spacing:-.2px}
 .energy-iron-count{margin:10px 0}.energy-iron-count select{width:100%}
 .energy-manual{grid-column:span 12}
+.stepper button{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.energy-log-entry{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:center}
+.energy-log-main{min-width:0}.energy-log-value{text-align:right}.energy-log-value strong{display:block;color:var(--green);font-size:18px;margin-top:2px}
+.energy-log-edit{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px;margin-top:2px}
+.energy-log-edit summary{cursor:pointer;font-weight:800;color:var(--nav);touch-action:manipulation}
+.energy-log-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 6px}
+.energy-log-entry.needs-assignment{border-color:#e4b45f!important;background:#fffaf0!important}
 .dashboard-mini .mini{background:#f5f9f7}
 #home>.grid{grid-template-columns:repeat(12,1fr)}
 #home .overview-card{grid-column:span 12}
@@ -217,4 +224,5 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
  #flexEnergyLog .shopitem>.muted{grid-column:1;grid-row:2;line-height:1.35}
  #flexEnergyLog .shopitem>div:last-child{grid-column:2;grid-row:1/3;align-self:center;text-align:right;white-space:normal;max-width:130px;line-height:1.4}
  #flexEnergyLog .shopitem>div:last-child strong{display:block;font-size:18px;color:var(--green);margin-top:2px}
+ .energy-log-entry{grid-template-columns:1fr!important}.energy-log-value{text-align:left}.energy-log-fields{grid-template-columns:1fr}
 }

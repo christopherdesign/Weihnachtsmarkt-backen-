@@ -34,6 +34,11 @@
  $('family1Payout').textContent=eur(expenses[s.family1]+share)+' inkl. Gewinnanteil';$('family2Payout').textContent=eur(expenses[s.family2]+share)+' inkl. Gewinnanteil';
  renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderPurchaseHistory();renderCharts();renderYearComparison();renderShop()
 }
+let deferredRenderTimer=null;
+function deferFullRender(){
+ clearTimeout(deferredRenderTimer);
+ deferredRenderTimer=setTimeout(()=>{deferredRenderTimer=null;render()},180);
+}
 function updateShop(e){
  const i=Number(e.target.dataset.i),a=e.target.dataset.action;if(!Number.isInteger(i)||!a)return;
  const item=s.shopping[i]; if(!item)return;
@@ -48,7 +53,7 @@ function updateShop(e){
  else if(a==='minus'){item.qty=Math.max(0,Math.round(n(item.qty))-1)}
  else if(a==='unitPrice'){item.unitPrice=n(e.target.value);item.cost=item.qty*item.unitPrice}
  save();
- if(['done','del','plus','minus'].includes(a))render();else{
+ if(['done','del','plus','minus'].includes(a)){renderShop();deferFullRender()}else{
    $('costKpi').textContent=eur(shopTotal());if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
  }
 }
@@ -201,7 +206,7 @@ function changeProduction(kind,delta){
  const sold=stockTotals().sold[kind]||0;
  const next=Math.max(0,Math.round(n(s.production[kind]))+delta);
  if(next<sold)return alert('Produzierte Eimer können nicht unter die bereits verkaufte Menge gesetzt werden.');
- s.production[kind]=next;save();render();
+ s.production[kind]=next;save();renderProductionAndStock();deferFullRender();
 }
 $('madeCookieMinus').onclick=()=>changeProduction('cookie',-1);
 $('madeCookiePlus').onclick=()=>changeProduction('cookie',1);

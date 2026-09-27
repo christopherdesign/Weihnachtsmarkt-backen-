@@ -46,7 +46,12 @@
      const wrap=document.createElement('div');wrap.id='dynamicEnergy';wrap.style.display='contents';
      grid.appendChild(wrap);
      grid.firstElementChild.querySelector('.note').innerHTML='Jede Familie hat einen eigenen Strompreis. Leistung, Gerätename und Gerätetyp werden separat gepflegt. Beim Stoppen werden <strong>Familie, Gerät, Wattzahl und Strompreis</strong> fest im Protokoll gespeichert.';
-     wrap.addEventListener('change',e=>{const id=e.target.dataset.ironcount;if(!id)return;const d=cfg().devices.find(x=>x.id===id);if(d){d.ironCount=ironCount(d,e.target.value);save();render()}});
+     wrap.addEventListener('change',e=>{
+       const familyLogId=e.target.dataset.logfamily,deviceLogId=e.target.dataset.logdevice;
+       if(familyLogId){const l=(s.energyLogs||[]).find(x=>x.id===familyLogId);if(l){l.family=e.target.value;if(l.powerPrice===undefined)l.powerPrice=famPrice(l.family);save();render()}return}
+       if(deviceLogId){const l=(s.energyLogs||[]).find(x=>x.id===deviceLogId),d=cfg().devices.find(x=>x.id===e.target.value);if(l&&d){l.device='custom';l.deviceId=d.id;l.deviceType=d.type;l.deviceName=d.name;l.family=d.family;if(!n(l.watts))l.watts=effectiveWatts(d,l.ironCount);if(l.powerPrice===undefined)l.powerPrice=famPrice(d.family);save();render()}return}
+       const id=e.target.dataset.ironcount;if(!id)return;const d=cfg().devices.find(x=>x.id===id);if(d){d.ironCount=ironCount(d,e.target.value);save();render()}
+     });
      wrap.addEventListener('click',e=>{
        if(e.target.id==='addFlexibleEnergyLog'){
          const d=cfg().devices.find(x=>x.id===$('flexLogDevice').value),date=$('flexLogDate').value,start=$('flexLogStart').value,end=$('flexLogEnd').value;
@@ -85,7 +90,12 @@
    const updateManualIron=()=>{const d=c.devices.find(x=>x.id===$('flexLogDevice').value);$('flexLogIronCountWrap').hidden=d?.type!=='Hörncheneisen';if(d?.type==='Hörncheneisen')$('flexLogIronCount').value=String(ironCount(d,$('flexLogIronCount').value))};
    $('flexLogDevice').onchange=updateManualIron;updateManualIron();
    const logs=[...(s.energyLogs||[])].sort((a,b)=>String(b.createdAt||b.date).localeCompare(String(a.createdAt||a.date)));
-   $('flexEnergyLog').innerHTML=logs.length?logs.map(l=>'<div class="shopitem"><strong>'+esc(l.deviceName||({oven:'Backofen',iron:'Hörncheneisen',machine:'Küchenmaschine',stove:'Herd'}[l.device]||'Gerät'))+'</strong><div class="muted">'+esc(l.family||'Altbestand')+' · '+esc(l.deviceType||'')+(l.ironCount?' · '+ironCount({},l.ironCount)+' Eisen':'')+' · '+esc(l.date||'')+' · '+Math.round(logMinutes(l))+' Min.</div><div>'+n(l.watts||deviceWatts(l.device,s,l.ironCount)).toLocaleString('de-DE')+' W · '+n(l.powerPrice||s.powerPrice).toLocaleString('de-DE',{minimumFractionDigits:3})+' €/kWh · <strong>'+eur(energyLogCost(l))+'</strong></div></div>').join(''):'<div class="muted">Noch keine Energiezeiten gespeichert.</div>';
+   $('flexEnergyLog').innerHTML=logs.length?logs.map(l=>{
+     const needsAssignment=!l.family||!l.deviceId;
+     const familyOptions='<option value="">Familie wählen</option>'+[s.family1,s.family2].map(f=>'<option value="'+esc(f)+'" '+(l.family===f?'selected':'')+'>'+esc(f)+'</option>').join('');
+     const deviceOptions='<option value="">Gerät wählen</option>'+c.devices.map(d=>'<option value="'+d.id+'" '+(l.deviceId===d.id?'selected':'')+'>'+esc(d.name)+' · '+esc(d.family)+'</option>').join('');
+     return '<div class="shopitem energy-log-entry '+(needsAssignment?'needs-assignment':'')+'"><div class="energy-log-main"><strong>'+esc(l.deviceName||({oven:'Backofen',iron:'Hörncheneisen',machine:'Küchenmaschine',stove:'Herd'}[l.device]||'Gerät'))+'</strong><div class="muted">'+esc(l.family||'Altbestand – nicht zugeordnet')+' · '+esc(l.deviceType||'')+(l.ironCount?' · '+ironCount({},l.ironCount)+' Eisen':'')+' · '+esc(l.date||'')+' · '+Math.round(logMinutes(l))+' Min.</div></div><div class="energy-log-value">'+n(l.watts||deviceWatts(l.device,s,l.ironCount)).toLocaleString('de-DE')+' W · '+n(l.powerPrice||s.powerPrice).toLocaleString('de-DE',{minimumFractionDigits:3})+' €/kWh · <strong>'+eur(energyLogCost(l))+'</strong></div><details class="energy-log-edit" '+(needsAssignment?'open':'')+'><summary>'+(needsAssignment?'Zuordnung erforderlich':'Zuordnung ändern')+'</summary><div class="energy-log-fields"><label>Familie<select data-logfamily="'+esc(l.id)+'">'+familyOptions+'</select></label><label>Gerät<select data-logdevice="'+esc(l.id)+'">'+deviceOptions+'</select></label></div><div class="muted">Die Zuordnung wird gespeichert und synchronisiert. Dauer, Wattzahl und bisherige Kosten bleiben unverändert.</div></details></div>';
+   }).join(''):'<div class="muted">Noch keine Energiezeiten gespeichert.</div>';
    const by=energyByFamily();$('energyFamilySummaryBody').innerHTML=[s.family1,s.family2].map(f=>'<div class="compare"><div class="l">'+esc(f)+'</div><div class="v money">'+eur(by[f])+'</div><div class="muted">Stromkosten</div></div>').join('');
    const qs=document.querySelector('#home .quickstart');if(qs)qs.innerHTML=c.devices.map(d=>'<button class="primary quickbtn" data-qdev="'+d.id+'">'+icon(d.type)+' '+esc(d.name)+'<small>'+esc(d.family)+' · '+(d.running?'läuft '+fmt(devElapsed(d)):n(d.watts).toLocaleString('de-DE')+' W')+'</small></button>').join('');
    qs?.querySelectorAll('[data-qdev]').forEach(b=>b.onclick=()=>{const d=c.devices.find(x=>x.id===b.dataset.qdev);if(d&&!d.running){d.running=true;d.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()});
