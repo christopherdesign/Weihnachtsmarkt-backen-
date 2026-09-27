@@ -145,6 +145,8 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
 .section-title h2{margin-bottom:0}.section-title{margin-bottom:13px}
 .note{background:#f6f8ee;border-color:#e4e8c8;color:#53601e}
 .energy-device{border-top:3px solid #2c7a5d}.money{letter-spacing:-.2px}
+.energy-iron-count{margin:10px 0}.energy-iron-count select{width:100%}
+.energy-manual{grid-column:span 12}
 .dashboard-mini .mini{background:#f5f9f7}
 #home>.grid{grid-template-columns:repeat(12,1fr)}
 #home .overview-card{grid-column:span 12}
