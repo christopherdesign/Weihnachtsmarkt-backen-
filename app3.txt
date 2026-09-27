@@ -35,10 +35,16 @@
  renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderPurchaseHistory();renderCharts();renderYearComparison();renderShop()
 }
 let deferredRenderTimer=null;
+let deferredInteractionSaveTimer=null;
 function deferFullRender(){
  clearTimeout(deferredRenderTimer);
  deferredRenderTimer=setTimeout(()=>{deferredRenderTimer=null;render()},180);
 }
+function deferInteractionSave(){
+ clearTimeout(deferredInteractionSaveTimer);
+ deferredInteractionSaveTimer=setTimeout(()=>{deferredInteractionSaveTimer=null;save();deferFullRender()},80);
+}
+addEventListener('pagehide',()=>{if(deferredInteractionSaveTimer){clearTimeout(deferredInteractionSaveTimer);deferredInteractionSaveTimer=null;save()}});
 function updateShop(e){
  const i=Number(e.target.dataset.i),a=e.target.dataset.action;if(!Number.isInteger(i)||!a)return;
  const item=s.shopping[i]; if(!item)return;
@@ -52,8 +58,11 @@ function updateShop(e){
  else if(a==='plus'){item.qty=Math.max(0,Math.round(n(item.qty)))+1;item.done=false}
  else if(a==='minus'){item.qty=Math.max(0,Math.round(n(item.qty))-1)}
  else if(a==='unitPrice'){item.unitPrice=n(e.target.value);item.cost=item.qty*item.unitPrice}
- save();
- if(['done','del','plus','minus'].includes(a)){renderShop();deferFullRender()}else{
+ if(['plus','minus'].includes(a)){
+   const count=e.target.closest('.shopitem')?.querySelector('.count');if(count)count.textContent=Math.max(0,Math.round(n(item.qty)));
+   deferInteractionSave();
+ }else if(['done','del'].includes(a)){save();renderShop();deferFullRender()}else{
+   save();
    $('costKpi').textContent=eur(shopTotal());if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
  }
 }
@@ -206,7 +215,7 @@ function changeProduction(kind,delta){
  const sold=stockTotals().sold[kind]||0;
  const next=Math.max(0,Math.round(n(s.production[kind]))+delta);
  if(next<sold)return alert('Produzierte Eimer können nicht unter die bereits verkaufte Menge gesetzt werden.');
- s.production[kind]=next;save();renderProductionAndStock();deferFullRender();
+ s.production[kind]=next;renderProductionAndStock();deferInteractionSave();
 }
 $('madeCookieMinus').onclick=()=>changeProduction('cookie',-1);
 $('madeCookiePlus').onclick=()=>changeProduction('cookie',1);
