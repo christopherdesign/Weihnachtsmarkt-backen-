@@ -16,10 +16,10 @@
  $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));$('machineCost').textContent=eur(powerCost(s.machine,'machine'));$('stoveCost').textContent=eur(powerCost(s.stove,'stove'));
  $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;$('machineStart').disabled=s.machine.running;$('machineStop').disabled=!s.machine.running;$('stoveStart').disabled=s.stove.running;$('stoveStop').disabled=!s.stove.running;
  $('year').value=s.year;$('family1').value=s.family1;$('family2').value=s.family2;
- $('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit · '+n(s.oven.watts).toLocaleString('de-DE')+' W';
- $('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit · '+n(s.iron.wattsEach).toLocaleString('de-DE')+' W je Eisen';
- $('homeMachineState').textContent=s.machine.running?'läuft '+fmt(elapsed(s.machine)):'bereit · '+n(s.machine.watts).toLocaleString('de-DE')+' W';
- $('homeStoveState').textContent=s.stove.running?'läuft '+fmt(elapsed(s.stove)):'bereit · '+n(s.stove.watts).toLocaleString('de-DE')+' W';
+ if($('homeOvenState'))$('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit · '+n(s.oven.watts).toLocaleString('de-DE')+' W';
+ if($('homeIronState'))$('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit · '+n(s.iron.wattsEach).toLocaleString('de-DE')+' W je Eisen';
+ if($('homeMachineState'))$('homeMachineState').textContent=s.machine.running?'läuft '+fmt(elapsed(s.machine)):'bereit · '+n(s.machine.watts).toLocaleString('de-DE')+' W';
+ if($('homeStoveState'))$('homeStoveState').textContent=s.stove.running?'läuft '+fmt(elapsed(s.stove)):'bereit · '+n(s.stove.watts).toLocaleString('de-DE')+' W';
  const today=new Date().toISOString().slice(0,10);
  const todayManual=(s.energyLogs||[]).filter(x=>x.date===today).reduce((a,l)=>a+energyLogCost(l),0);
  $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0)+(s.machine.running?powerCost(s.machine,'machine'):0)+(s.stove.running?powerCost(s.stove,'stove'):0));
