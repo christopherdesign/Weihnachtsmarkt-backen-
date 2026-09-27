@@ -183,6 +183,10 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
 /* V10.3.2: alte globale Energiefelder bleiben nur zur Datenkompatibilität im DOM */
 .legacy-energy-setting{display:none!important}
 
+/* V10.3.3: Produktionsbereich auf tatsächlich produzierte Eimer reduzieren */
+#plan>.grid>.card:first-child,
+#plan>.grid>.card:nth-child(n+3){display:none!important}
+
 
 /* V10.1 mobile device editor fix */
 #deviceAdminList{display:grid;gap:10px}
