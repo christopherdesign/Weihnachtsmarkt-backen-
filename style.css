@@ -152,7 +152,8 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
 .energy-log-main{min-width:0}.energy-log-value{text-align:right}.energy-log-value strong{display:block;color:var(--green);font-size:18px;margin-top:2px}
 .energy-log-edit{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px;margin-top:2px}
 .energy-log-edit summary{cursor:pointer;font-weight:800;color:var(--nav);touch-action:manipulation}
-.energy-log-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 6px}
+.energy-log-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 8px}
+.energy-log-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:7px}
 .energy-log-entry.needs-assignment{border-color:#e4b45f!important;background:#fffaf0!important}
 .dashboard-mini .mini{background:#f5f9f7}
 #home>.grid{grid-template-columns:repeat(12,1fr)}
@@ -231,5 +232,6 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
  #flexEnergyLog .shopitem>.muted{grid-column:1;grid-row:2;line-height:1.35}
  #flexEnergyLog .shopitem>div:last-child{grid-column:2;grid-row:1/3;align-self:center;text-align:right;white-space:normal;max-width:130px;line-height:1.4}
  #flexEnergyLog .shopitem>div:last-child strong{display:block;font-size:18px;color:var(--green);margin-top:2px}
- .energy-log-entry{grid-template-columns:1fr!important}.energy-log-value{text-align:left}.energy-log-fields{grid-template-columns:1fr}
+ .energy-log-entry{grid-template-columns:1fr!important}.energy-log-value{text-align:left}.energy-log-fields{grid-template-columns:1fr 1fr}.energy-log-actions button{flex:1 1 150px}
 }
+@media(max-width:430px){.energy-log-fields{grid-template-columns:1fr}}
