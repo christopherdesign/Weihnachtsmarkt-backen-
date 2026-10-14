@@ -21,7 +21,7 @@ Für eine vollständig reproduzierbare Debug-APK nur mit einem installierten And
 npm run android:direct
 ```
 
-Das Skript bündelt ebenfalls immer die aktuellen Dateien aus dem Projektstamm. Die APK wird als `Weihnachtsmarkt-Backen-V10.5.apk` im Projektstamm abgelegt. Diese Variante enthält zusätzlich die nativen Android-Dialoge für Bonfotos, JSON-Import und JSON-Export.
+Das Skript bündelt ebenfalls immer die aktuellen Dateien aus dem Projektstamm. Die APK wird als `Weihnachtsmarkt-Backen-V10.5.1.apk` im Projektstamm abgelegt. Diese Variante enthält zusätzlich die nativen Android-Dialoge für Bonfotos, JSON-Import und JSON-Export.
 
 ## Vom Eigentümer freigegebene App-Updates
 

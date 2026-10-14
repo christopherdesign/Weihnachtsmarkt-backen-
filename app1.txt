@@ -238,6 +238,15 @@ async function getCloudRow(year){
 function applyMergedState(next){
  cloudApplying=true;s=normalizeState(next,next.year,next?._sync?.migratedAt);writeLocal(s);lastSavedSnapshot=deep(s);cloudApplying=false;render();
 }
+function isPristineLocalState(state){
+ const clocks=state?._sync?.fieldClocks||{},tombstones=state?._sync?.tombstones||{};
+ const hasTombstones=Object.values(tombstones).some(group=>Object.keys(group||{}).length);
+ const shoppingChanged=(state.shopping||[]).some(item=>n(item.qty)||n(item.cost)||n(item.unitPrice)||item.done);
+ return !Object.keys(clocks).length&&!hasTombstones&&!shoppingChanged
+  &&!(state.saleEntries||[]).length&&!(state.energyLogs||[]).length&&!(state.purchaseEntries||[]).length&&!(state.productionEntries||[]).length
+  &&!n(state.production?.cookie)&&!n(state.production?.horn)&&!n(state.production?.mixed)
+  &&!n(state.sales?.cookieSold)&&!n(state.sales?.hornSold)&&!n(state.sales?.mixedSold);
+}
 async function saveCloudState(){
  if(!cloudReady)return;
  if(syncInFlight){syncAgain=true;return}
@@ -279,6 +288,10 @@ async function fetchCloudYear(apply=true){
    const stamp=row.updated_at||'';
    if(apply && stamp && stamp!==lastCloudStamp){
      lastCloudStamp=stamp;
+     if(isPristineLocalState(s)){
+       applyMergedState(row.data);
+       return true;
+     }
      const merged=mergeStates(s,row.data,s.year,stamp);
      const cloudNeedsMerge=!same(merged,normalizeState(row.data,s.year,row.data?._sync?.migratedAt||stamp));
      applyMergedState(merged);

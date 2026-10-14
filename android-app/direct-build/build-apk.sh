@@ -15,7 +15,7 @@ cp "$PROJECT_DIR/index.html" "$PROJECT_DIR/style.css" "$PROJECT_DIR"/app*.txt "$
 
 "$BUILD_TOOLS/aapt2" compile --dir "$DIRECT_DIR/res" -o "$BUILD_DIR/compiled/resources.zip"
 "$BUILD_TOOLS/aapt2" link -I "$ANDROID_JAR" --manifest "$DIRECT_DIR/AndroidManifest.xml" \
-  --min-sdk-version 24 --target-sdk-version 36 --version-code 10500 --version-name 10.5.0 \
+  --min-sdk-version 24 --target-sdk-version 36 --version-code 10501 --version-name 10.5.1 \
   --java "$BUILD_DIR/generated" -A "$BUILD_DIR/assets" -o "$BUILD_DIR/app-unsigned.apk" \
   "$BUILD_DIR/compiled/resources.zip"
 
@@ -31,6 +31,6 @@ if [[ ! -f "$KEYSTORE" ]]; then
     -dname "CN=Android Debug,O=Android,C=DE" -keyalg RSA -keysize 2048 -validity 10000 -noprompt
 fi
 "$BUILD_TOOLS/apksigner" sign --ks "$KEYSTORE" --ks-pass pass:android --key-pass pass:android \
-  --ks-key-alias androiddebugkey --out "$BUILD_DIR/Weihnachtsmarkt-Backen-V10.5.apk" "$BUILD_DIR/app-aligned.apk"
-cp "$BUILD_DIR/Weihnachtsmarkt-Backen-V10.5.apk" "$PROJECT_DIR/Weihnachtsmarkt-Backen-V10.5.apk"
-echo "$PROJECT_DIR/Weihnachtsmarkt-Backen-V10.5.apk"
+  --ks-key-alias androiddebugkey --out "$BUILD_DIR/Weihnachtsmarkt-Backen-V10.5.1.apk" "$BUILD_DIR/app-aligned.apk"
+cp "$BUILD_DIR/Weihnachtsmarkt-Backen-V10.5.1.apk" "$PROJECT_DIR/Weihnachtsmarkt-Backen-V10.5.1.apk"
+echo "$PROJECT_DIR/Weihnachtsmarkt-Backen-V10.5.1.apk"

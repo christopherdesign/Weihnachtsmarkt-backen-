@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     private static final String RELEASE_MANIFEST = "https://" + WEB_HOST + "/mobile-release.json";
     private static final String RELEASE_URL_KEY = "released_web_url";
     private static final String RELEASE_VERSION_KEY = "released_web_version";
-    private static final int CURRENT_NATIVE_VERSION = 10500;
+    private static final int CURRENT_NATIVE_VERSION = 10501;
     private static final int FILE_CHOOSER_REQUEST = 101;
     private static final int EXPORT_REQUEST = 102;
     private WebView webView;

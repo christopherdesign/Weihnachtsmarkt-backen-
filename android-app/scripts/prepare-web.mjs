@@ -11,4 +11,4 @@ const files = ['index.html', 'style.css', 'app1.txt', 'app2.txt', 'app3.txt', 'a
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 await Promise.all(files.map(file => copyFile(resolve(source, file), resolve(target, file))));
-console.log(`V10.5-Webdateien nach ${target} kopiert.`);
+console.log(`V10.5.1-Webdateien nach ${target} kopiert.`);
