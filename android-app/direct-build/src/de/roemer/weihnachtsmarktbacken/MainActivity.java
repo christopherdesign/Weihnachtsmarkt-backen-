@@ -3,6 +3,7 @@ package de.roemer.weihnachtsmarktbacken;
 import android.app.Activity;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -32,6 +33,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Collections;
+import java.util.UUID;
 import org.json.JSONObject;
 
 public class MainActivity extends Activity {
@@ -49,6 +51,7 @@ public class MainActivity extends Activity {
     private String pendingExportJson;
     private String launchFragment = "";
     private boolean fallbackInProgress;
+    private boolean pageFinished;
     private volatile boolean releaseCheckRunning;
 
     @Override
@@ -122,9 +125,20 @@ public class MainActivity extends Activity {
         }
 
         @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            super.onPageStarted(view, url, favicon);
+            pageFinished = false;
+        }
+
+        @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
+            pageFinished = true;
             fallbackInProgress = false;
+            String releasedUrl = getPreferences(MODE_PRIVATE).getString(RELEASE_URL_KEY, "");
+            if (LOCAL_HOST.equals(Uri.parse(url).getHost()) && isAllowedReleaseUrl(releasedUrl)) {
+                loadReleasePreservingWorkspace(releasedUrl);
+            }
         }
 
         @Override
@@ -168,8 +182,7 @@ public class MainActivity extends Activity {
                         @Override public void run() {
                             String current = webView.getUrl();
                             if (current == null || !stripFragment(current).equals(stripFragment(releaseUrl))) {
-                                String fragment = current == null ? launchFragment : Uri.parse(current).getEncodedFragment();
-                                webView.loadUrl(withFragment(releaseUrl, fragment == null || fragment.isEmpty() ? "" : "#" + fragment));
+                                if (pageFinished) loadReleasePreservingWorkspace(releaseUrl);
                             }
                         }
                     });
@@ -254,6 +267,33 @@ public class MainActivity extends Activity {
 
     private String withFragment(String url, String fragment) {
         return stripFragment(url) + (fragment == null ? "" : fragment);
+    }
+
+    private void loadReleasePreservingWorkspace(final String releaseUrl) {
+        String current = webView.getUrl();
+        String fragment = current == null ? launchFragment : Uri.parse(current).getEncodedFragment();
+        if (fragment != null && !fragment.isEmpty()) {
+            webView.loadUrl(withFragment(releaseUrl, "#" + fragment));
+            return;
+        }
+        if (current == null || !LOCAL_HOST.equals(Uri.parse(current).getHost())) {
+            webView.loadUrl(releaseUrl);
+            return;
+        }
+        webView.evaluateJavascript("localStorage.getItem('wm_backen_workspace_id')||''", new ValueCallback<String>() {
+            @Override public void onReceiveValue(String value) {
+                String workspace = "";
+                try {
+                    Object decoded = new org.json.JSONTokener(value).nextValue();
+                    if (decoded instanceof String) workspace = (String) decoded;
+                } catch (Exception ignored) {
+                }
+                if (!workspace.matches("^[0-9a-fA-F-]{36}$")) workspace = UUID.randomUUID().toString();
+                String script = "localStorage.setItem('wm_backen_workspace_id','" + workspace + "')";
+                webView.evaluateJavascript(script, null);
+                webView.loadUrl(releaseUrl + "#workspace=" + Uri.encode(workspace));
+            }
+        });
     }
 
     private void loadLocalFallback() {
