@@ -188,6 +188,14 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
 #plan>.grid>.card:first-child,
 #plan>.grid>.card:nth-child(n+3){display:none!important}
 
+/* V10.5: speicherbare Produktionsvorgänge mit bearbeitbarem Verlauf */
+.production-date{max-width:320px;margin-top:14px}.save-production{width:100%;margin-top:14px;padding:14px;font-size:16px}
+.production-history{display:grid;gap:9px}.production-entry{border:1px solid var(--line);border-radius:15px;padding:12px;background:#f8fbf9}
+.production-entry-edit{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}.production-entry-edit summary{cursor:pointer;font-weight:800;color:var(--nav);touch-action:manipulation}
+.production-entry-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:10px 0}.production-entry-actions{display:flex;gap:8px;flex-wrap:wrap}.production-entry-actions button{flex:1 1 160px}
+@media(max-width:700px){.production-entry-fields{grid-template-columns:1fr 1fr}}
+@media(max-width:430px){.production-date{max-width:none}.production-entry-fields{grid-template-columns:1fr}}
+
 
 /* V10.1 mobile device editor fix */
 #deviceAdminList{display:grid;gap:10px}

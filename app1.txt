@@ -25,6 +25,7 @@ const defaults={
  purchase:{buyer:'Familie 1',store:'',date:''},
  planning:{hornBatches:0,cookieBatches:0,cookieKg:0,chocPerKg:200},
  production:{cookie:0,horn:0,mixed:0},
+ productionEntries:[],productionHistoryMigrated:false,
  sales:{cookieMade:0,cookieSold:0,cookiePrice:0,hornMade:0,hornSold:0,hornPrice:0,mixedSold:0,mixedPrice:0},
  energyLogs:[],
  saleEntries:[],
@@ -61,11 +62,11 @@ function workspaceShareUrl(){const u=new URL(location.href);u.hash='workspace='+
 const SYNC_PATHS=[
  'family1','family2','powerPrice','salePrices.cookie','salePrices.horn','salePrices.mixed',
  'purchase.buyer','purchase.store','purchase.date','planning.hornBatches','planning.cookieBatches',
- 'planning.cookieKg','planning.chocPerKg','production.cookie','production.horn','production.mixed',
+ 'planning.cookieKg','planning.chocPerKg','production.cookie','production.horn','production.mixed','productionHistoryMigrated',
  'oven.watts','oven.elapsed','oven.running','oven.startAt','iron.count','iron.wattsEach','iron.elapsed','iron.running','iron.startAt',
  'machine.watts','machine.elapsed','machine.running','machine.startAt','stove.watts','stove.elapsed','stove.running','stove.startAt'
 ];
-const ARRAY_KEYS=['shopping','saleEntries','energyLogs','purchaseEntries'];
+const ARRAY_KEYS=['shopping','saleEntries','energyLogs','purchaseEntries','productionEntries'];
 function getPath(obj,path){return path.split('.').reduce((v,k)=>v==null?undefined:v[k],obj)}
 function setPath(obj,path,value){const parts=path.split('.');let cur=obj;parts.slice(0,-1).forEach(k=>cur=cur[k]||(cur[k]={}));cur[parts.at(-1)]=deep(value)}
 function same(a,b){return JSON.stringify(a)===JSON.stringify(b)}
@@ -89,6 +90,7 @@ function ensureSyncShape(state,sourceStamp){
 let s=load();
 let lastSavedSnapshot=deep(s);
 let saleDraft={cookie:0,horn:0,mixed:0};
+let productionDraft={cookie:0,horn:0,mixed:0};
 let pendingReceiptPhoto=null;
 function normalizeState(old, yearOverride, sourceStamp){
  const base=deep(defaults), merged={...base,...(old||{})};
@@ -110,6 +112,7 @@ function normalizeState(old, yearOverride, sourceStamp){
  merged.energyLogs=Array.isArray(old&&old.energyLogs)?old.energyLogs:[];
  merged.saleEntries=Array.isArray(old&&old.saleEntries)?old.saleEntries:[];
  merged.purchaseEntries=Array.isArray(old&&old.purchaseEntries)?old.purchaseEntries:[];
+ merged.productionEntries=Array.isArray(old&&old.productionEntries)?old.productionEntries:[];
  merged.production={...deep(defaults.production),...((old&&old.production)||{})};
  if(!merged.saleEntries.length && old && old.sales){
    const hasOld=n(old.sales.cookieSold)||n(old.sales.hornSold)||n(old.sales.mixedSold);
@@ -129,6 +132,13 @@ function normalizeState(old, yearOverride, sourceStamp){
  merged.production.cookie=Math.max(0,Math.round(n(merged.production.cookie)));
  merged.production.horn=Math.max(0,Math.round(n(merged.production.horn)));
  merged.production.mixed=Math.max(0,Math.round(n(merged.production.mixed)));
+ if(!(old&&old.productionHistoryMigrated)){
+   const total=merged.production.cookie+merged.production.horn+merged.production.mixed;
+   if(total&&!merged.productionEntries.length){
+     merged.productionEntries.push({id:'production-legacy-'+(yearOverride||merged.year),date:'',cookieQty:merged.production.cookie,hornQty:merged.production.horn,mixedQty:merged.production.mixed,legacy:true,createdAt:sourceStamp||nowIso()});
+   }
+   merged.productionHistoryMigrated=true;
+ }
  if(!old || !old.family1 || old.family1==='Familie 1') merged.family1='Römer';
  if(!old || !old.family2 || old.family2==='Familie 2') merged.family2='Rusche';
  if(!old || old.powerPrice===undefined || Number(old.powerPrice)===0.22) merged.powerPrice=.25;

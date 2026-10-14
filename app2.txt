@@ -54,12 +54,13 @@ function stockTotals(){
 function stockClass(v){return v<0?'stockbad':v<=2?'stocklow':'stockok'}
 function renderProductionAndStock(){
  const p=s.production||{cookie:0,horn:0,mixed:0},st=stockTotals();
- if($('madeCookieCount'))$('madeCookieCount').textContent=n(p.cookie);
- if($('madeHornCount'))$('madeHornCount').textContent=n(p.horn);
- if($('madeMixedCount'))$('madeMixedCount').textContent=n(p.mixed);
+ if($('madeCookieCount'))$('madeCookieCount').textContent=n(productionDraft.cookie);
+ if($('madeHornCount'))$('madeHornCount').textContent=n(productionDraft.horn);
+ if($('madeMixedCount'))$('madeMixedCount').textContent=n(productionDraft.mixed);
  if($('planCookieStock'))$('planCookieStock').textContent=st.cookie;
  if($('planHornStock'))$('planHornStock').textContent=st.horn;
  if($('planMixedStock'))$('planMixedStock').textContent=st.mixed;
+ if($('productionDate')&&!$('productionDate').value)$('productionDate').value=new Date().toISOString().slice(0,10);
  const rows=[['Cookie',st.cookie,p.cookie,st.sold.cookie],['Horn',st.horn,p.horn,st.sold.horn],['Mixed',st.mixed,p.mixed,st.sold.mixed]];
  rows.forEach(([k,v,made,sold])=>{
    const e=$('stock'+k);if(e){e.textContent=v;e.className='stocknum '+stockClass(v)}
@@ -67,6 +68,19 @@ function renderProductionAndStock(){
    if($('stock'+k+'Sold'))$('stock'+k+'Sold').textContent=n(sold);
  });
  if($('stockTotalPill'))$('stockTotalPill').textContent=(st.cookie+st.horn+st.mixed)+' Eimer verfügbar';
+ renderProductionHistory();
+}
+function productionEntryValues(entry){
+ return {cookie:Math.max(0,Math.round(n(entry?.cookieQty))),horn:Math.max(0,Math.round(n(entry?.hornQty))),mixed:Math.max(0,Math.round(n(entry?.mixedQty)))};
+}
+function renderProductionHistory(){
+ const box=$('productionHistory');if(!box)return;
+ const entries=[...(s.productionEntries||[])].sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
+ if($('productionEntryCount'))$('productionEntryCount').textContent=entries.length+' '+(entries.length===1?'Eintrag':'Einträge');
+ box.innerHTML=entries.length?entries.map(entry=>{
+   const q=productionEntryValues(entry),label=entry.legacy?'Übernommener Bestand':(entry.date?new Date(entry.date+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}):'Ohne Datum');
+   return `<article class="production-entry"><div class="salehead"><div><strong>${label}</strong><div class="muted">${q.cookie+q.horn+q.mixed} Eimer insgesamt</div></div></div><details class="production-entry-edit"><summary>Eintrag bearbeiten</summary><div class="production-entry-fields"><label>Datum<input type="date" data-production-field="date" value="${esc(entry.date||'')}"></label><label>🍪 Kekse<input type="number" min="0" step="1" data-production-field="cookie" value="${q.cookie}"></label><label>🧇 Hörnchen<input type="number" min="0" step="1" data-production-field="horn" value="${q.horn}"></label><label>🍪🍫 ½/½<input type="number" min="0" step="1" data-production-field="mixed" value="${q.mixed}"></label></div><div class="production-entry-actions"><button class="primary" type="button" data-productionsave="${esc(entry.id)}">Änderungen speichern</button><button class="danger" type="button" data-productiondelete="${esc(entry.id)}">Eintrag löschen</button></div></details></article>`;
+ }).join(''):'<div class="muted">Noch keine Produktion gespeichert.</div>';
 }
 function renderSaleDraft(){
  if(!$('saleCookieCount'))return;
