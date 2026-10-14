@@ -1,0 +1,12 @@
+{
+  "appId": "de.roemer.weihnachtsmarktbacken",
+  "appName": "Weihnachtsmarkt Backen",
+  "webDir": "web",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#123f31"
+  }
+}

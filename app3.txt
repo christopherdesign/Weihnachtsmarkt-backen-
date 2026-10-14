@@ -292,11 +292,23 @@ $('energyLogList').onclick=e=>{if(e.target.dataset.logdel!==undefined){s.energyL
 $('logDate').value=new Date().toISOString().slice(0,10);
 $('logDevice').onchange();
 
-$('exportBtn').onclick=()=>{const b=new Blob([JSON.stringify(s,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`weihnachtsmarkt-backen-${s.year}.json`;a.click();URL.revokeObjectURL(a.href)};
+$('exportBtn').onclick=()=>{const filename=`weihnachtsmarkt-backen-${s.year}.json`,json=JSON.stringify(s,null,2);if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}const b=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();URL.revokeObjectURL(a.href)};
 $('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const incoming=normalizeState(JSON.parse(await e.target.files[0].text()),s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
 $('copySyncLink').onclick=async()=>{
  const link=workspaceShareUrl(),hint=$('syncShareHint');
  try{await navigator.clipboard.writeText(link);hint.textContent='Freigabelink kopiert – jetzt auf dem zweiten Handy öffnen.'}
  catch(e){prompt('Diesen Link auf dem zweiten Handy öffnen:',link)}
+};
+$('joinSyncLink').onclick=async()=>{
+ let link='';
+ try{link=(await navigator.clipboard.readText()).trim()}catch(e){}
+ if(!link)link=(prompt('Den bisherigen Freigabelink aus Chrome hier einfügen:')||'').trim();
+ if(!link)return;
+ try{
+   const url=new URL(link),id=new URLSearchParams(url.hash.replace(/^#/,'')).get('workspace');
+   if(!id||!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id))throw new Error('workspace');
+   if(!confirm('Mit den vorhandenen Daten dieses Arbeitsbereichs verbinden?'))return;
+   localStorage.setItem(WORKSPACE_KEY,id);location.hash='workspace='+encodeURIComponent(id);location.reload();
+ }catch(e){alert('Der Freigabelink ist ungültig. Bitte den vollständigen Link aus der bisherigen Web-App kopieren.')}
 };
 $('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? Andere Jahre bleiben erhalten.')){const y=s.year;s=freshYear(y);save();render()}};

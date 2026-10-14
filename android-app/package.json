@@ -1,0 +1,20 @@
+{
+  "name": "weihnachtsmarkt-backen-android",
+  "version": "10.5.1",
+  "private": true,
+  "description": "Android-App für Weihnachtsmarkt Backen",
+  "scripts": {
+    "build:web": "node scripts/prepare-web.mjs",
+    "android:sync": "npm run build:web && cap sync android",
+    "android:debug": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "android:direct": "./direct-build/build-apk.sh",
+    "release:web": "node scripts/prepare-mobile-release.mjs"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}
