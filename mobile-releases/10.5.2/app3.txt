@@ -1,0 +1,314 @@
+;$('purchaseDate').value=s.purchase.date;
+ $('hornBatches').value=s.planning.hornBatches;$('cookieBatches').value=s.planning.cookieBatches;$('cookieKg').value=s.planning.cookieKg;$('chocPerKg').value=s.planning.chocPerKg;renderNeeds();
+ $('yearText').textContent=s.year;
+ $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('homeCostsTotal').textContent=eur(shopTotal()+totalEnergy());$('famKpi').textContent=eur(profit()/2);
+ const st=saleTotals();$('cookieHome').textContent=st.cookie;$('hornHome').textContent=st.horn;$('mixedHome').textContent=st.mixed;
+ $('cookieHomeRev').textContent=eur(cookieRevenue())+' Umsatz';$('hornHomeRev').textContent=eur(hornRevenue())+' Umsatz';$('mixedHomeRev').textContent=eur(mixedRevenue())+' Umsatz';
+ $('powerPrice').value=s.powerPrice;
+ $('settingOvenWatts').value=s.oven.watts;$('settingIronWatts').value=s.iron.wattsEach;$('settingMachineWatts').value=s.machine.watts;$('settingStoveWatts').value=s.stove.watts;
+ $('settingCookiePrice').value=s.salePrices.cookie;$('settingHornPrice').value=s.salePrices.horn;$('settingMixedPrice').value=s.salePrices.mixed;
+ $('ironCount').value=s.iron.count;$('ovenPower').textContent=n(s.oven.watts).toLocaleString('de-DE')+' W';$('ironPower').textContent=(s.iron.count*s.iron.wattsEach).toLocaleString('de-DE')+' W';$('machinePower').textContent=n(s.machine.watts).toLocaleString('de-DE')+' W';$('stovePower').textContent=n(s.stove.watts).toLocaleString('de-DE')+' W';
+ $('ovenTimer').textContent=fmt(elapsed(s.oven));$('ironTimer').textContent=fmt(elapsed(s.iron));$('machineTimer').textContent=fmt(elapsed(s.machine));$('stoveTimer').textContent=fmt(elapsed(s.stove));
+ $('ovenKwh').textContent=kwh(s.oven,'oven').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('ironKwh').textContent=kwh(s.iron,'iron').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('machineKwh').textContent=kwh(s.machine,'machine').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('stoveKwh').textContent=kwh(s.stove,'stove').toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+ $('ovenCost').textContent=eur(powerCost(s.oven,'oven'));$('ironCost').textContent=eur(powerCost(s.iron,'iron'));$('machineCost').textContent=eur(powerCost(s.machine,'machine'));$('stoveCost').textContent=eur(powerCost(s.stove,'stove'));
+ $('ovenStart').disabled=s.oven.running;$('ovenStop').disabled=!s.oven.running;$('ironStart').disabled=s.iron.running;$('ironStop').disabled=!s.iron.running;$('machineStart').disabled=s.machine.running;$('machineStop').disabled=!s.machine.running;$('stoveStart').disabled=s.stove.running;$('stoveStop').disabled=!s.stove.running;
+ $('year').value=s.year;$('family1').value=s.family1;$('family2').value=s.family2;
+ if($('homeOvenState'))$('homeOvenState').textContent=s.oven.running?'läuft '+fmt(elapsed(s.oven)):'bereit · '+n(s.oven.watts).toLocaleString('de-DE')+' W';
+ if($('homeIronState'))$('homeIronState').textContent=s.iron.running?'läuft '+fmt(elapsed(s.iron)):'bereit · '+n(s.iron.wattsEach).toLocaleString('de-DE')+' W je Eisen';
+ if($('homeMachineState'))$('homeMachineState').textContent=s.machine.running?'läuft '+fmt(elapsed(s.machine)):'bereit · '+n(s.machine.watts).toLocaleString('de-DE')+' W';
+ if($('homeStoveState'))$('homeStoveState').textContent=s.stove.running?'läuft '+fmt(elapsed(s.stove)):'bereit · '+n(s.stove.watts).toLocaleString('de-DE')+' W';
+ const today=new Date().toISOString().slice(0,10);
+ const todayManual=(s.energyLogs||[]).filter(x=>x.date===today).reduce((a,l)=>a+energyLogCost(l),0);
+ $('homeEnergyToday').textContent=eur(todayManual+(s.oven.running?powerCost(s.oven,'oven'):0)+(s.iron.running?powerCost(s.iron,'iron'):0)+(s.machine.running?powerCost(s.machine,'machine'):0)+(s.stove.running?powerCost(s.stove,'stove'):0));
+ $('homeBuckets').textContent=st.cookie+st.horn+st.mixed;
+ $('homeProfit').textContent=eur(profit());$('homeOpenShop').textContent=s.shopping.filter(x=>!isLegacyPurchase(x)&&n(x.qty)>0).length;
+ const stock=stockTotals();
+ $('homeStockTotal').textContent=stock.cookie+stock.horn+stock.mixed;
+ [['Cookie',stock.cookie],['Horn',stock.horn],['Mixed',stock.mixed]].forEach(([kind,value])=>{const el=$('homeStock'+kind);el.textContent=value;el.className='stocknum '+stockClass(value)});
+ const expenses=familyExpenses(),share=profit()/2;
+ $('family1Label').textContent=s.family1;$('family2Label').textContent=s.family2;
+ $('family1Expenses').textContent=eur(expenses[s.family1]);$('family2Expenses').textContent=eur(expenses[s.family2]);
+ $('family1Payout').textContent=eur(expenses[s.family1]+share)+' inkl. Gewinnanteil';$('family2Payout').textContent=eur(expenses[s.family2]+share)+' inkl. Gewinnanteil';
+ renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderPurchaseHistory();renderCharts();renderYearComparison();renderShop()
+}
+let deferredRenderTimer=null;
+let deferredInteractionSaveTimer=null;
+function deferFullRender(){
+ clearTimeout(deferredRenderTimer);
+ deferredRenderTimer=setTimeout(()=>{deferredRenderTimer=null;render()},180);
+}
+function deferInteractionSave(){
+ clearTimeout(deferredInteractionSaveTimer);
+ deferredInteractionSaveTimer=setTimeout(()=>{deferredInteractionSaveTimer=null;save();deferFullRender()},80);
+}
+addEventListener('pagehide',()=>{if(deferredInteractionSaveTimer){clearTimeout(deferredInteractionSaveTimer);deferredInteractionSaveTimer=null;save()}});
+function updateShop(e){
+ const i=Number(e.target.dataset.i),a=e.target.dataset.action;if(!Number.isInteger(i)||!a)return;
+ const item=s.shopping[i]; if(!item)return;
+ if(item.unitPrice===undefined)item.unitPrice=(n(item.qty)>0?n(item.cost)/n(item.qty):0);
+ if(a==='del'){s.shopping.splice(i,1)}
+ else if(a==='done'){
+   item.done=e.target.checked;item.pendingPurchase=e.target.checked;
+   if(item.done){item.buyer=s.purchase.buyer;item.store=s.purchase.store;item.purchaseDate=s.purchase.date}
+ }
+ else if(a==='name'){item.name=e.target.value}
+ else if(a==='plus'){item.qty=Math.max(0,Math.round(n(item.qty)))+1;item.done=false}
+ else if(a==='minus'){item.qty=Math.max(0,Math.round(n(item.qty))-1)}
+ else if(a==='unitPrice'){item.unitPrice=n(e.target.value);item.cost=item.qty*item.unitPrice}
+ if(['plus','minus'].includes(a)){
+   const count=e.target.closest('.shopitem')?.querySelector('.count');if(count)count.textContent=Math.max(0,Math.round(n(item.qty)));
+   deferInteractionSave();
+ }else if(['done','del'].includes(a)){save();renderShop();deferFullRender()}else{
+   save();
+   $('costKpi').textContent=eur(shopTotal());if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
+ }
+}
+if($('homeShopList')){$('homeShopList').addEventListener('change',updateShop);$('homeShopList').addEventListener('input',updateShop);$('homeShopList').addEventListener('click',updateShop);}
+$('fullShopList').addEventListener('change',updateShop);$('fullShopList').addEventListener('input',updateShop);$('fullShopList').addEventListener('click',updateShop);
+$('baseIngredients').onclick=e=>{if(e.target.dataset.bi!==undefined){s.shopping.splice(Number(e.target.dataset.bi),1);save();render()}};
+
+function openPage(button){
+ document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+ button.classList.add('active');
+ const target=$(button.dataset.page);
+ if(target) target.classList.add('active');
+}
+document.querySelectorAll('.tab').forEach(b=>{
+ b.addEventListener('click',()=>openPage(b));
+});
+for(let i=1;i<=12;i++){ $('ironCount').insertAdjacentHTML('beforeend',`<option value="${i}">${i} Eisen</option>`); $('logIronCount').insertAdjacentHTML('beforeend',`<option value="${i}">${i}</option>`); }
+
+function addItem(){
+ const name=$('newName').value.trim()||'Neuer Artikel';
+ s.shopping.push({id:makeId('shop'),name,qty:1,unit:'Stück',unitPrice:n($('newCost').value),cost:n($('newCost').value),done:false,buyer:s.purchase.buyer,store:s.purchase.store,purchaseDate:s.purchase.date});
+ ['newName','newCost'].forEach(id=>$(id).value='');save();render();
+}
+$('addShop').onclick=addItem;
+if($('homeAdd'))$('homeAdd').onclick=()=>{openPage(document.querySelector('[data-page="shop"]'));$('newName').focus()};
+
+function imageFromFile(file){
+ return new Promise((resolve,reject)=>{
+   const reader=new FileReader();
+   reader.onerror=()=>reject(new Error('Foto konnte nicht gelesen werden.'));
+   reader.onload=()=>{
+     const img=new Image();img.onerror=()=>reject(new Error('Das ausgewählte Bild ist ungültig.'));
+     img.onload=()=>resolve(img);img.src=reader.result;
+   };
+   reader.readAsDataURL(file);
+ });
+}
+async function compressReceiptPhoto(file){
+ if(!file?.type?.startsWith('image/'))throw new Error('Bitte ein Bild als Bon-Foto auswählen.');
+ if(file.size>15*1024*1024)throw new Error('Das Foto ist zu groß. Bitte ein Bild unter 15 MB auswählen.');
+ const img=await imageFromFile(file),maxSide=1400;
+ let scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+ let width=Math.max(1,Math.round(img.naturalWidth*scale)),height=Math.max(1,Math.round(img.naturalHeight*scale));
+ let quality=.78,dataUrl='';
+ for(let attempt=0;attempt<9;attempt++){
+   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+   const ctx=canvas.getContext('2d',{alpha:false});ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.drawImage(img,0,0,width,height);
+   dataUrl=canvas.toDataURL('image/jpeg',quality);
+   if(dataUrl.length<=180000)break;
+   if(quality>.48)quality-=.08;else{width=Math.max(500,Math.round(width*.82));height=Math.max(1,Math.round(img.naturalHeight*(width/img.naturalWidth)));}
+ }
+ if(dataUrl.length>260000)throw new Error('Das Foto konnte nicht ausreichend verkleinert werden. Bitte den Bon enger fotografieren.');
+ return {dataUrl,name:file.name||'Bon-Foto.jpg',originalSize:file.size};
+}
+function purchaseLineTotal(item){
+ const qty=Math.max(0,Math.round(n(item.qty))),price=n(item.unitPrice!==undefined?item.unitPrice:(qty>0?n(item.cost)/qty:0));
+ return qty*price;
+}
+function localToday(){
+ const d=new Date();return `${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`;
+}
+$('receiptPhoto').onchange=async e=>{
+ const file=e.target.files?.[0],status=$('purchaseSaveStatus');
+ if(!file){pendingReceiptPhoto=null;renderPurchaseDraft();return}
+ status.textContent='Bon-Foto wird vorbereitet …';
+ try{pendingReceiptPhoto=await compressReceiptPhoto(file);status.textContent='Bon-Foto ist bereit zum Speichern.'}
+ catch(error){pendingReceiptPhoto=null;e.target.value='';status.textContent=error.message;alert(error.message)}
+ renderPurchaseDraft();
+};
+$('removeReceiptPhoto').onclick=()=>{pendingReceiptPhoto=null;$('receiptPhoto').value='';$('purchaseSaveStatus').textContent='Bon-Foto entfernt.';renderPurchaseDraft()};
+$('savePurchase').onclick=async()=>{
+ const selected=s.shopping.filter(item=>item.done&&item.pendingPurchase&&Math.max(0,Math.round(n(item.qty)))>0);
+ const status=$('purchaseSaveStatus');
+ if(!selected.length){status.textContent='Bitte mindestens einen gekauften Artikel markieren.';alert('Bitte mindestens einen Artikel über das Häkchen als gekauft markieren.');return}
+ const date=s.purchase.date||localToday(),createdAt=nowIso(),entryId=makeId('purchase');
+ const items=selected.map(item=>({name:item.name,qty:Math.max(0,Math.round(n(item.qty))),unit:item.unit||'Stück',unitPrice:n(item.unitPrice),total:purchaseLineTotal(item)}));
+ const entry={id:entryId,date,buyer:s.purchase.buyer,store:s.purchase.store.trim(),items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt};
+ s.purchaseEntries=s.purchaseEntries||[];s.purchaseEntries.push(entry);
+ selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyer=s.purchase.buyer;item.store=s.purchase.store.trim()});
+ s.purchase.date=date;
+ try{
+   save();pendingReceiptPhoto=null;$('receiptPhoto').value='';render();status.textContent='Einkauf gespeichert und im Nachweis protokolliert.';
+   if(cloudReady)await saveCloudState();
+ }catch(error){s.purchaseEntries=s.purchaseEntries.filter(x=>x.id!==entryId);selected.forEach((item,index)=>{const saved=items[index];item.qty=saved.qty;item.unitPrice=saved.unitPrice;item.cost=saved.total;item.done=true;item.pendingPurchase=true});status.textContent='Einkauf konnte nicht gespeichert werden.';alert('Der Einkauf konnte nicht gespeichert werden. Bitte Bon-Foto entfernen oder kleiner aufnehmen.');}
+};
+$('purchaseHistory').onclick=e=>{
+ const id=e.target.dataset.purchasedel;if(!id)return;
+ if(confirm('Diesen Einkaufsnachweis wirklich löschen? Der Betrag wird dann auch aus den Kosten entfernt.')){s.purchaseEntries=s.purchaseEntries.filter(x=>x.id!==id);save();render()}
+};
+
+function bind(id,fn){$(id).addEventListener('input',e=>{fn(e.target.value);save();render()})}
+
+$('activeYearSelect').onchange=e=>switchYear(e.target.value);
+$('compareYearSelect').onchange=e=>{compareYear=Number(e.target.value);renderYearComparison()};
+
+$('buyer').onchange=e=>{s.purchase.buyer=e.target.value;save()};bind('store',v=>s.purchase.store=v);bind('purchaseDate',v=>s.purchase.date=v);
+bind('hornBatches',v=>s.planning.hornBatches=n(v));bind('cookieBatches',v=>s.planning.cookieBatches=n(v));bind('cookieKg',v=>s.planning.cookieKg=n(v));bind('chocPerKg',v=>s.planning.chocPerKg=n(v));
+$('toShopping').onclick=()=>{recipeNeeds().filter(x=>!x.notShopping).forEach(r=>{let q=s.shopping.find(x=>x.name===r.name);if(q){q.done=false}else{s.shopping.push({name:r.name,qty:0,unit:'Stück',unitPrice:0,cost:0,done:false})}});save();render();openPage(document.querySelector('[data-page="shop"]'))};
+
+bind('family1',v=>s.family1=v);bind('family2',v=>s.family2=v);
+bind('powerPrice',v=>s.powerPrice=n(v));
+bind('settingCookiePrice',v=>s.salePrices.cookie=n(v));
+bind('settingHornPrice',v=>s.salePrices.horn=n(v));
+bind('settingMixedPrice',v=>s.salePrices.mixed=n(v));
+bind('settingOvenWatts',v=>s.oven.watts=Math.max(1,n(v)));
+bind('settingIronWatts',v=>s.iron.wattsEach=Math.max(1,n(v)));
+bind('settingMachineWatts',v=>s.machine.watts=Math.max(1,n(v)));
+bind('settingStoveWatts',v=>s.stove.watts=Math.max(1,n(v)));
+$('ironCount').onchange=e=>{s.iron.count=Number(e.target.value);save();render()};
+
+function two(v){return String(v).padStart(2,'0')}
+function localDateTime(ms){
+ const d=new Date(ms);
+ return {date:`${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`,time:`${two(d.getHours())}:${two(d.getMinutes())}`};
+}
+function energyDeviceState(device){return device==='iron'?s.iron:device==='machine'?s.machine:device==='stove'?s.stove:s.oven}
+function stopAndArchiveEnergy(device){
+ const d=energyDeviceState(device);
+ if(!d.running)return;
+ const started=d.startAt||Date.now(),ended=Date.now();
+ const a=localDateTime(started),b=localDateTime(ended);
+ s.energyLogs=s.energyLogs||[];
+ s.energyLogs.push({
+   id:makeId('energy'),
+   device,date:a.date,start:a.time,end:b.time,
+   ironCount:device==='iron'?(n(d.count)||1):undefined,
+   watts:deviceWatts(device,s,d.count),
+   powerPrice:n(s.powerPrice),
+   durationMs:Math.max(0,ended-started),
+   createdAt:new Date().toISOString()
+ });
+ d.running=false;d.startAt=null;d.elapsed=0;
+}
+
+$('ovenStart').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.startAt=Date.now();save();render()}};
+$('ovenStop').onclick=()=>{stopAndArchiveEnergy('oven');save();render()};$('ovenReset').onclick=()=>{if(confirm('Backofen-Zeit auf 0 setzen?')){s.oven.elapsed=0;s.oven.running=false;s.oven.startAt=null;save();render()}};
+$('ironStart').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save();render()}};
+$('ironStop').onclick=()=>{stopAndArchiveEnergy('iron');save();render()};$('ironReset').onclick=()=>{if(confirm('Hörncheneisen-Zeit auf 0 setzen?')){s.iron.elapsed=0;s.iron.running=false;s.iron.startAt=null;save();render()}};
+$('machineStart').onclick=()=>{if(!s.machine.running){s.machine.running=true;s.machine.startAt=Date.now();save();render()}};
+$('machineStop').onclick=()=>{stopAndArchiveEnergy('machine');save();render()};$('machineReset').onclick=()=>{if(confirm('Küchenmaschinen-Zeit auf 0 setzen?')){s.machine.elapsed=0;s.machine.running=false;s.machine.startAt=null;save();render()}};
+$('stoveStart').onclick=()=>{if(!s.stove.running){s.stove.running=true;s.stove.startAt=Date.now();save();render()}};
+$('stoveStop').onclick=()=>{stopAndArchiveEnergy('stove');save();render()};$('stoveReset').onclick=()=>{if(confirm('Herd-Zeit auf 0 setzen?')){s.stove.elapsed=0;s.stove.running=false;s.stove.startAt=null;save();render()}};
+
+
+
+fillSaleDates();
+function changeProduction(kind,delta){
+ productionDraft[kind]=Math.max(0,Math.round(n(productionDraft[kind]))+delta);
+ renderProductionAndStock();
+}
+$('madeCookieMinus').onclick=()=>changeProduction('cookie',-1);
+$('madeCookiePlus').onclick=()=>changeProduction('cookie',1);
+$('madeHornMinus').onclick=()=>changeProduction('horn',-1);
+$('madeHornPlus').onclick=()=>changeProduction('horn',1);
+$('madeMixedMinus').onclick=()=>changeProduction('mixed',-1);
+$('madeMixedPlus').onclick=()=>changeProduction('mixed',1);
+$('saveProduction').onclick=()=>{
+ const q=productionEntryValues({cookieQty:productionDraft.cookie,hornQty:productionDraft.horn,mixedQty:productionDraft.mixed}),date=$('productionDate').value;
+ if(!(q.cookie||q.horn||q.mixed))return alert('Bitte mindestens einen produzierten Eimer erfassen.');
+ if(!date)return alert('Bitte ein Produktionsdatum auswählen.');
+ s.production=s.production||{cookie:0,horn:0,mixed:0};s.productionEntries=s.productionEntries||[];
+ s.production.cookie=Math.round(n(s.production.cookie))+q.cookie;s.production.horn=Math.round(n(s.production.horn))+q.horn;s.production.mixed=Math.round(n(s.production.mixed))+q.mixed;
+ s.productionEntries.push({id:makeId('production'),date,cookieQty:q.cookie,hornQty:q.horn,mixedQty:q.mixed,createdAt:nowIso()});
+ productionDraft={cookie:0,horn:0,mixed:0};save();render();
+};
+$('productionHistory').onclick=e=>{
+ const saveId=e.target.dataset.productionsave,deleteId=e.target.dataset.productiondelete;if(!saveId&&!deleteId)return;
+ const id=saveId||deleteId,entry=(s.productionEntries||[]).find(x=>x.id===id);if(!entry)return;
+ const old=productionEntryValues(entry),sold=stockTotals().sold;
+ if(saveId){
+   const form=e.target.closest('.production-entry-edit'),field=name=>form?.querySelector('[data-production-field="'+name+'"]'),next=productionEntryValues({cookieQty:field('cookie')?.value,hornQty:field('horn')?.value,mixedQty:field('mixed')?.value});
+   const totals={cookie:n(s.production.cookie)-old.cookie+next.cookie,horn:n(s.production.horn)-old.horn+next.horn,mixed:n(s.production.mixed)-old.mixed+next.mixed};
+   if(totals.cookie<sold.cookie||totals.horn<sold.horn||totals.mixed<sold.mixed)return alert('Die Änderung würde den Bestand unter die bereits verkaufte Menge setzen.');
+   s.production={cookie:Math.round(totals.cookie),horn:Math.round(totals.horn),mixed:Math.round(totals.mixed)};entry.date=field('date')?.value||'';entry.cookieQty=next.cookie;entry.hornQty=next.horn;entry.mixedQty=next.mixed;save();render();return;
+ }
+ const totals={cookie:n(s.production.cookie)-old.cookie,horn:n(s.production.horn)-old.horn,mixed:n(s.production.mixed)-old.mixed};
+ if(totals.cookie<sold.cookie||totals.horn<sold.horn||totals.mixed<sold.mixed)return alert('Dieser Eintrag kann nicht gelöscht werden, weil bereits Eimer daraus verkauft wurden.');
+ if(confirm('Diesen Produktionseintrag wirklich löschen?')){s.production={cookie:Math.round(totals.cookie),horn:Math.round(totals.horn),mixed:Math.round(totals.mixed)};s.productionEntries=s.productionEntries.filter(x=>x.id!==id);save();render()}
+};
+
+$('saleCookieMinus').onclick=()=>{saleDraft.cookie=Math.max(0,saleDraft.cookie-1);renderSaleDraft()};
+$('saleCookiePlus').onclick=()=>{const st=stockTotals();if(saleDraft.cookie>=st.cookie)return alert('Kein weiterer Keks-Eimer im Bestand.');saleDraft.cookie++;renderSaleDraft()};
+$('saleHornMinus').onclick=()=>{saleDraft.horn=Math.max(0,saleDraft.horn-1);renderSaleDraft()};
+$('saleHornPlus').onclick=()=>{const st=stockTotals();if(saleDraft.horn>=st.horn)return alert('Kein weiterer Hörnchen-Eimer im Bestand.');saleDraft.horn++;renderSaleDraft()};
+$('saleMixedMinus').onclick=()=>{saleDraft.mixed=Math.max(0,saleDraft.mixed-1);renderSaleDraft()};
+$('saleMixedPlus').onclick=()=>{const st=stockTotals();if(saleDraft.mixed>=st.mixed)return alert('Kein weiterer ½/½-Eimer im Bestand.');saleDraft.mixed++;renderSaleDraft()};
+$('saleDateSelect').onchange=()=>{$('saleCustomDate').value=''};
+$('saveSale').onclick=()=>{
+ if(!(saleDraft.cookie||saleDraft.horn||saleDraft.mixed))return alert('Bitte mindestens einen verkauften Eimer erfassen.');
+ const st=stockTotals();
+ if(saleDraft.cookie>st.cookie||saleDraft.horn>st.horn||saleDraft.mixed>st.mixed)return alert('Der ausgewählte Verkauf ist höher als der aktuelle Bestand. Bitte Bestand prüfen.');
+ const date=selectedSaleDate();
+ s.saleEntries=s.saleEntries||[];
+ s.saleEntries.push({
+   id:makeId('sale'),date,soldAt:date+'T'+two(new Date().getHours())+':'+two(new Date().getMinutes())+':'+two(new Date().getSeconds()),createdAt:nowIso(),
+   cookieQty:saleDraft.cookie,cookiePrice:n(s.salePrices.cookie),
+   hornQty:saleDraft.horn,hornPrice:n(s.salePrices.horn),
+   mixedQty:saleDraft.mixed,mixedPrice:n(s.salePrices.mixed)
+ });
+ saleDraft={cookie:0,horn:0,mixed:0};
+ $('saleCustomDate').value='';save();render();
+};
+$('salesHistory').onclick=e=>{
+ const id=e.target.dataset.saledel;if(!id)return;
+ if(confirm('Diesen Verkaufseintrag löschen?')){s.saleEntries=s.saleEntries.filter(x=>x.id!==id);save();render()}
+};
+
+$('quickOven').onclick=()=>{if(!s.oven.running){s.oven.running=true;s.oven.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('quickIron').onclick=()=>{if(!s.iron.running){s.iron.running=true;s.iron.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('quickMachine').onclick=()=>{if(!s.machine.running){s.machine.running=true;s.machine.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('quickStove').onclick=()=>{if(!s.stove.running){s.stove.running=true;s.stove.startAt=Date.now();save()}openPage(document.querySelector('[data-page="energy"]'));render()};
+$('homeToSales').onclick=()=>openPage(document.querySelector('[data-page="sales"]'));
+$('logDevice').onchange=()=>{$('logIronCountWrap').hidden=$('logDevice').value!=='iron'};
+$('addEnergyLog').onclick=()=>{
+ const device=$('logDevice').value,date=$('logDate').value,start=$('logStart').value,end=$('logEnd').value,ironCount=n($('logIronCount').value)||1;
+ if(!date||!start||!end)return alert('Bitte Datum, Start- und Endzeit auswählen.');
+ s.energyLogs=s.energyLogs||[];s.energyLogs.push({
+   id:makeId('energy'),device,date,start,end,ironCount,
+   watts:deviceWatts(device,s,ironCount),
+   powerPrice:n(s.powerPrice),createdAt:new Date().toISOString()
+ });
+ $('logStart').value='';$('logEnd').value='';
+ save();render();
+};
+$('energyLogList').onclick=e=>{if(e.target.dataset.logdel!==undefined){s.energyLogs.splice(Number(e.target.dataset.logdel),1);save();render()}};
+$('logDate').value=new Date().toISOString().slice(0,10);
+$('logDevice').onchange();
+
+$('exportBtn').onclick=()=>{const filename=`weihnachtsmarkt-backen-${s.year}.json`,json=JSON.stringify(s,null,2);if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}const b=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();URL.revokeObjectURL(a.href)};
+$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const incoming=normalizeState(JSON.parse(await e.target.files[0].text()),s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
+$('copySyncLink').onclick=async()=>{
+ const link=workspaceShareUrl(),hint=$('syncShareHint');
+ try{await navigator.clipboard.writeText(link);hint.textContent='Freigabelink kopiert – jetzt auf dem zweiten Handy öffnen.'}
+ catch(e){prompt('Diesen Link auf dem zweiten Handy öffnen:',link)}
+};
+if($('joinSyncLink'))$('joinSyncLink').onclick=async()=>{
+ let link='';
+ try{link=(await navigator.clipboard.readText()).trim()}catch(e){}
+ if(!link)link=(prompt('Den bisherigen Freigabelink aus Chrome hier einfügen:')||'').trim();
+ if(!link)return;
+ try{
+   const url=new URL(link),id=new URLSearchParams(url.hash.replace(/^#/,'')).get('workspace');
+   if(!id||!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id))throw new Error('workspace');
+   if(!confirm('Mit den vorhandenen Daten dieses Arbeitsbereichs verbinden?'))return;
+   localStorage.setItem(WORKSPACE_KEY,id);location.hash='workspace='+encodeURIComponent(id);location.reload();
+ }catch(e){alert('Der Freigabelink ist ungültig. Bitte den vollständigen Link aus der bisherigen Web-App kopieren.')}
+};
+$('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? Andere Jahre bleiben erhalten.')){const y=s.year;s=freshYear(y);save();render()}};

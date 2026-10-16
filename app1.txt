@@ -4,6 +4,7 @@ const ACTIVE_YEAR_KEY='wm_backen_active_year';
 const YEAR_KEY_PREFIX='wm_backen_year_';
 const DEVICE_KEY='wm_backen_device_id';
 const WORKSPACE_KEY='wm_backen_workspace_id';
+const SHARED_WORKSPACE_ID='508dd1e5-3fb7-482c-9caf-7219d733ade7';
 const SUPABASE_URL='https://pefkhiqzsaraiomtdkwh.supabase.co';
 const SUPABASE_KEY='sb_publishable_L2btgUZjvNwNKmqo69csKQ_H_UwkjBx';
 let cloudReady=false, cloudApplying=false, cloudTimer=null, syncInFlight=false, syncAgain=false;
@@ -52,11 +53,12 @@ function deviceId(){
  return id;
 }
 function workspaceId(){
- const fromLink=new URLSearchParams(location.hash.replace(/^#/,'' )).get('workspace');
- if(fromLink&&/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(fromLink))localStorage.setItem(WORKSPACE_KEY,fromLink);
- let id=localStorage.getItem(WORKSPACE_KEY);
- if(!id){id=globalThis.crypto?.randomUUID?.()||'00000000-0000-4000-8000-'+hashText(deviceId()).padStart(12,'0').slice(0,12);localStorage.setItem(WORKSPACE_KEY,id)}
- return id;
+ if(localStorage.getItem(WORKSPACE_KEY)!==SHARED_WORKSPACE_ID)localStorage.setItem(WORKSPACE_KEY,SHARED_WORKSPACE_ID);
+ const linked=new URLSearchParams(location.hash.replace(/^#/,'' )).get('workspace');
+ if(linked!==SHARED_WORKSPACE_ID){
+   const url=new URL(location.href);url.hash='workspace='+SHARED_WORKSPACE_ID;history.replaceState(null,'',url);
+ }
+ return SHARED_WORKSPACE_ID;
 }
 function workspaceShareUrl(){const u=new URL(location.href);u.hash='workspace='+workspaceId();return u.toString()}
 const SYNC_PATHS=[
