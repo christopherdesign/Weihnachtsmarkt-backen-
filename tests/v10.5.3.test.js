@@ -66,10 +66,13 @@ assert.match(app5,/ARRAY_KEYS\.includes\('energyConfig\.devices'\)/,'energy devi
 
 // Immutable web release and root must contain the same deployable program files.
 for(const name of ['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','style.css']){
-  assert.equal(fs.readFileSync(root+'/'+name,'utf8'),fs.readFileSync(root+'/mobile-releases/10.5.3/'+name,'utf8'),name+' differs from immutable release');
+  assert.equal(fs.readFileSync(root+'/'+name,'utf8'),fs.readFileSync(root+'/mobile-releases/10.5.4/'+name,'utf8'),name+' differs from immutable release');
 }
 const manifest=JSON.parse(fs.readFileSync(root+'/mobile-release.json','utf8'));
-assert.equal(manifest.version,'10.5.3');
-assert.equal(manifest.path,'/mobile-releases/10.5.3/index.html');
+assert.equal(manifest.version,'10.5.4');
+assert.equal(manifest.path,'/mobile-releases/10.5.4/index.html');
+assert.match(app1,/select=updated_at&limit=1/);
+assert.match(app1,/if\(stamp!==lastCloudStamp\)await fetchCloudYear\(true\)/);
+assert.doesNotMatch(app1,/\},2500\);/);
 assert.match(fs.readFileSync(root+'/app3.txt','utf8'),/parsed\?\.backupFormat&&parsed\?\.data\?parsed\.data:parsed/,'the verified backup wrapper must be directly restorable');
-console.log('V10.5.3 tests passed with production snapshot:',JSON.stringify({purchases:source.purchaseEntries.length,photos:beforePhotos.filter((_,i)=>source.purchaseEntries[i].receiptPhoto).length,production:source.productionEntries.length,sales:source.saleEntries.length,energyLogs:source.energyLogs.length}));
+console.log('V10.5.4 tests passed with production snapshot:',JSON.stringify({purchases:source.purchaseEntries.length,photos:beforePhotos.filter((_,i)=>source.purchaseEntries[i].receiptPhoto).length,production:source.productionEntries.length,sales:source.saleEntries.length,energyLogs:source.energyLogs.length}));
