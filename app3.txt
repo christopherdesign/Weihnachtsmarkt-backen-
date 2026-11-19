@@ -28,10 +28,13 @@
  const stock=stockTotals();
  $('homeStockTotal').textContent=stock.cookie+stock.horn+stock.mixed;
  [['Cookie',stock.cookie],['Horn',stock.horn],['Mixed',stock.mixed]].forEach(([kind,value])=>{const el=$('homeStock'+kind);el.textContent=value;el.className='stocknum '+stockClass(value)});
- const expenses=familyExpenses(),share=profit()/2;
+ const expenses=familyExpenses(),common=profit(),share=common/2,claim1=expenses[s.family1]+share,claim2=expenses[s.family2]+share;
  $('family1Label').textContent=s.family1;$('family2Label').textContent=s.family2;
  $('family1Expenses').textContent=eur(expenses[s.family1]);$('family2Expenses').textContent=eur(expenses[s.family2]);
- $('family1Payout').textContent=eur(expenses[s.family1]+share)+' inkl. Gewinnanteil';$('family2Payout').textContent=eur(expenses[s.family2]+share)+' inkl. Gewinnanteil';
+ $('neutralExpenses').textContent=eur(neutralExpenses());$('commonResult').textContent=eur(common);$('resultShare').textContent=eur(share);
+ $('resultState').textContent=common<0?'Verlust':'Gewinn';$('resultState').className='pill '+(common<0?'bad':'good');
+ $('family1Payout').textContent=eur(claim1)+(claim1<0?' Ausgleichspflicht':' Abrechnungsanspruch');
+ $('family2Payout').textContent=eur(claim2)+(claim2<0?' Ausgleichspflicht':' Abrechnungsanspruch');
  renderYearSelectors();renderEnergyLogs();renderProductionAndStock();renderSaleDraft();renderSalesHistory();renderPurchaseHistory();renderCharts();renderYearComparison();renderShop()
 }
 let deferredRenderTimer=null;
@@ -52,7 +55,7 @@ function updateShop(e){
  if(a==='del'){s.shopping.splice(i,1)}
  else if(a==='done'){
    item.done=e.target.checked;item.pendingPurchase=e.target.checked;
-   if(item.done){item.buyer=s.purchase.buyer;item.store=s.purchase.store;item.purchaseDate=s.purchase.date}
+   if(item.done){item.buyerKey=s.purchase.buyerKey;item.buyer=purchasePartyLabel({buyerKey:s.purchase.buyerKey});item.store=s.purchase.store;item.purchaseDate=s.purchase.date}
  }
  else if(a==='name'){item.name=e.target.value}
  else if(a==='plus'){item.qty=Math.max(0,Math.round(n(item.qty)))+1;item.done=false}
@@ -84,7 +87,7 @@ for(let i=1;i<=12;i++){ $('ironCount').insertAdjacentHTML('beforeend',`<option v
 
 function addItem(){
  const name=$('newName').value.trim()||'Neuer Artikel';
- s.shopping.push({id:makeId('shop'),name,qty:1,unit:'Stück',unitPrice:n($('newCost').value),cost:n($('newCost').value),done:false,buyer:s.purchase.buyer,store:s.purchase.store,purchaseDate:s.purchase.date});
+ s.shopping.push({id:makeId('shop'),name,qty:1,unit:'Stück',unitPrice:n($('newCost').value),cost:n($('newCost').value),done:false,buyerKey:s.purchase.buyerKey,buyer:purchasePartyLabel({buyerKey:s.purchase.buyerKey}),store:s.purchase.store,purchaseDate:s.purchase.date});
  ['newName','newCost'].forEach(id=>$(id).value='');save();render();
 }
 $('addShop').onclick=addItem;
@@ -140,9 +143,9 @@ $('savePurchase').onclick=async()=>{
  if(!selected.length){status.textContent='Bitte mindestens einen gekauften Artikel markieren.';alert('Bitte mindestens einen Artikel über das Häkchen als gekauft markieren.');return}
  const date=s.purchase.date||localToday(),createdAt=nowIso(),entryId=makeId('purchase');
  const items=selected.map(item=>({name:item.name,qty:Math.max(0,Math.round(n(item.qty))),unit:item.unit||'Stück',unitPrice:n(item.unitPrice),total:purchaseLineTotal(item)}));
- const entry={id:entryId,date,buyer:s.purchase.buyer,store:s.purchase.store.trim(),items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt};
+ const entry={id:entryId,date,buyerKey:s.purchase.buyerKey,buyer:purchasePartyLabel({buyerKey:s.purchase.buyerKey}),store:s.purchase.store.trim(),items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt,updatedAt:createdAt};
  s.purchaseEntries=s.purchaseEntries||[];s.purchaseEntries.push(entry);
- selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyer=s.purchase.buyer;item.store=s.purchase.store.trim()});
+ selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyerKey=s.purchase.buyerKey;item.buyer=purchasePartyLabel({buyerKey:s.purchase.buyerKey});item.store=s.purchase.store.trim()});
  s.purchase.date=date;
  try{
    save();pendingReceiptPhoto=null;$('receiptPhoto').value='';render();status.textContent='Einkauf gespeichert und im Nachweis protokolliert.';
@@ -159,7 +162,7 @@ function bind(id,fn){$(id).addEventListener('input',e=>{fn(e.target.value);save(
 $('activeYearSelect').onchange=e=>switchYear(e.target.value);
 $('compareYearSelect').onchange=e=>{compareYear=Number(e.target.value);renderYearComparison()};
 
-$('buyer').onchange=e=>{s.purchase.buyer=e.target.value;save()};bind('store',v=>s.purchase.store=v);bind('purchaseDate',v=>s.purchase.date=v);
+$('buyer').onchange=e=>{s.purchase.buyerKey=e.target.value;s.purchase.buyer=purchasePartyLabel({buyerKey:e.target.value});save()};bind('store',v=>s.purchase.store=v);bind('purchaseDate',v=>s.purchase.date=v);
 bind('hornBatches',v=>s.planning.hornBatches=n(v));bind('cookieBatches',v=>s.planning.cookieBatches=n(v));bind('cookieKg',v=>s.planning.cookieKg=n(v));bind('chocPerKg',v=>s.planning.chocPerKg=n(v));
 $('toShopping').onclick=()=>{recipeNeeds().filter(x=>!x.notShopping).forEach(r=>{let q=s.shopping.find(x=>x.name===r.name);if(q){q.done=false}else{s.shopping.push({name:r.name,qty:0,unit:'Stück',unitPrice:0,cost:0,done:false})}});save();render();openPage(document.querySelector('[data-page="shop"]'))};
 
@@ -293,7 +296,7 @@ $('logDate').value=new Date().toISOString().slice(0,10);
 $('logDevice').onchange();
 
 $('exportBtn').onclick=()=>{const filename=`weihnachtsmarkt-backen-${s.year}.json`,json=JSON.stringify(s,null,2);if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}const b=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();URL.revokeObjectURL(a.href)};
-$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const incoming=normalizeState(JSON.parse(await e.target.files[0].text()),s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
+$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text()),payload=parsed?.backupFormat&&parsed?.data?parsed.data:parsed;const incoming=normalizeState(payload,s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
 $('copySyncLink').onclick=async()=>{
  const link=workspaceShareUrl(),hint=$('syncShareHint');
  try{await navigator.clipboard.writeText(link);hint.textContent='Freigabelink kopiert – jetzt auf dem zweiten Handy öffnen.'}
@@ -312,3 +315,4 @@ if($('joinSyncLink'))$('joinSyncLink').onclick=async()=>{
  }catch(e){alert('Der Freigabelink ist ungültig. Bitte den vollständigen Link aus der bisherigen Web-App kopieren.')}
 };
 $('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? Andere Jahre bleiben erhalten.')){const y=s.year;s=freshYear(y);save();render()}};
+
