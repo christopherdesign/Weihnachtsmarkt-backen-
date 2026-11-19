@@ -71,4 +71,5 @@ for(const name of ['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app
 const manifest=JSON.parse(fs.readFileSync(root+'/mobile-release.json','utf8'));
 assert.equal(manifest.version,'10.5.3');
 assert.equal(manifest.path,'/mobile-releases/10.5.3/index.html');
+assert.match(fs.readFileSync(root+'/app3.txt','utf8'),/parsed\?\.backupFormat&&parsed\?\.data\?parsed\.data:parsed/,'the verified backup wrapper must be directly restorable');
 console.log('V10.5.3 tests passed with production snapshot:',JSON.stringify({purchases:source.purchaseEntries.length,photos:beforePhotos.filter((_,i)=>source.purchaseEntries[i].receiptPhoto).length,production:source.productionEntries.length,sales:source.saleEntries.length,energyLogs:source.energyLogs.length}));
