@@ -1,4 +1,4 @@
-ontent=open+' offen';if($('doneCount'))$('doneCount').textContent=done+' gekauft';if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
+if($('doneCount'))$('doneCount').textContent=done+' gekauft';if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
  $('baseIngredients').innerHTML=s.shopping.map((x,i)=>`<div class="ing"><strong>${esc(x.name)}</strong><span>${x.qty||0}</span><span>${esc(x.unit)}</span><span class="ingcost money">${eur(x.cost)}</span><button class="danger ingdel" data-bi="${i}">×</button></div>`).join('');
 }
 
@@ -44,10 +44,11 @@ function fillSaleDates(){
 }
 function stockTotals(){
  const sold=saleTotals();
+ const open=!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations?Reservations.openTotals(s):{cookie:0,horn:0,mixed:0};
  return {
-   cookie:n(s.production?.cookie)-sold.cookie,
-   horn:n(s.production?.horn)-sold.horn,
-   mixed:n(s.production?.mixed)-sold.mixed,
+   cookie:n(s.production?.cookie)-sold.cookie-open.cookie,
+   horn:n(s.production?.horn)-sold.horn-open.horn,
+   mixed:n(s.production?.mixed)-sold.mixed-open.mixed,
    sold
  };
 }
