@@ -147,10 +147,9 @@ $('savePurchase').onclick=async()=>{
  s.purchaseEntries=s.purchaseEntries||[];s.purchaseEntries.push(entry);
  selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyerKey=s.purchase.buyerKey;item.buyer=purchasePartyLabel({buyerKey:s.purchase.buyerKey});item.store=s.purchase.store.trim()});
  s.purchase.date=date;
- try{
-   save();pendingReceiptPhoto=null;$('receiptPhoto').value='';render();status.textContent='Einkauf gespeichert und im Nachweis protokolliert.';
-   if(cloudReady)await saveCloudState();
- }catch(error){s.purchaseEntries=s.purchaseEntries.filter(x=>x.id!==entryId);selected.forEach((item,index)=>{const saved=items[index];item.qty=saved.qty;item.unitPrice=saved.unitPrice;item.cost=saved.total;item.done=true;item.pendingPurchase=true});status.textContent='Einkauf konnte nicht gespeichert werden.';alert('Der Einkauf konnte nicht gespeichert werden. Bitte Bon-Foto entfernen oder kleiner aufnehmen.');}
+ try{save()}catch(error){status.textContent='Einkauf konnte nicht lokal gespeichert werden. Entwurf und Bon-Foto bleiben erhalten.';return}
+ pendingReceiptPhoto=null;$('receiptPhoto').value='';render();
+ status.textContent='Einkauf lokal gespeichert. Den Cloud-Status zeigt die Anzeige oben.';
 };
 $('purchaseHistory').onclick=e=>{
  const id=e.target.dataset.purchasedel;if(!id)return;
@@ -271,6 +270,7 @@ $('saveSale').onclick=()=>{
 };
 $('salesHistory').onclick=e=>{
  const id=e.target.dataset.saledel;if(!id)return;
+ if(s.saleEntries.some(x=>x.id===id&&x.reservationId))return alert('Bitte die Abholung in der Reservierung korrigieren.');
  if(confirm('Diesen Verkaufseintrag löschen?')){s.saleEntries=s.saleEntries.filter(x=>x.id!==id);save();render()}
 };
 
