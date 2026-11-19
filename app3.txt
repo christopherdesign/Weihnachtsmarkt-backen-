@@ -235,14 +235,16 @@ $('productionHistory').onclick=e=>{
  const saveId=e.target.dataset.productionsave,deleteId=e.target.dataset.productiondelete;if(!saveId&&!deleteId)return;
  const id=saveId||deleteId,entry=(s.productionEntries||[]).find(x=>x.id===id);if(!entry)return;
  const old=productionEntryValues(entry),sold=stockTotals().sold;
+ const reserved=!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations?Reservations.openTotals(s):{cookie:0,horn:0,mixed:0};
+ const wouldUndercut=totals=>['cookie','horn','mixed'].some(k=>totals[k]<sold[k]+reserved[k]);
  if(saveId){
    const form=e.target.closest('.production-entry-edit'),field=name=>form?.querySelector('[data-production-field="'+name+'"]'),next=productionEntryValues({cookieQty:field('cookie')?.value,hornQty:field('horn')?.value,mixedQty:field('mixed')?.value});
    const totals={cookie:n(s.production.cookie)-old.cookie+next.cookie,horn:n(s.production.horn)-old.horn+next.horn,mixed:n(s.production.mixed)-old.mixed+next.mixed};
-   if(totals.cookie<sold.cookie||totals.horn<sold.horn||totals.mixed<sold.mixed)return alert('Die Änderung würde den Bestand unter die bereits verkaufte Menge setzen.');
+   if(wouldUndercut(totals))return alert('Die Änderung würde den Bestand unter die bereits verkaufte und reservierte Menge setzen.');
    s.production={cookie:Math.round(totals.cookie),horn:Math.round(totals.horn),mixed:Math.round(totals.mixed)};entry.date=field('date')?.value||'';entry.cookieQty=next.cookie;entry.hornQty=next.horn;entry.mixedQty=next.mixed;save();render();return;
  }
  const totals={cookie:n(s.production.cookie)-old.cookie,horn:n(s.production.horn)-old.horn,mixed:n(s.production.mixed)-old.mixed};
- if(totals.cookie<sold.cookie||totals.horn<sold.horn||totals.mixed<sold.mixed)return alert('Dieser Eintrag kann nicht gelöscht werden, weil bereits Eimer daraus verkauft wurden.');
+ if(wouldUndercut(totals))return alert('Dieser Eintrag kann nicht gelöscht werden, weil Eimer bereits verkauft oder reserviert sind.');
  if(confirm('Diesen Produktionseintrag wirklich löschen?')){s.production={cookie:Math.round(totals.cookie),horn:Math.round(totals.horn),mixed:Math.round(totals.mixed)};s.productionEntries=s.productionEntries.filter(x=>x.id!==id);save();render()}
 };
 
