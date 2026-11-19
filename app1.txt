@@ -7,6 +7,7 @@ const WORKSPACE_KEY='wm_backen_workspace_id';
 const SHARED_WORKSPACE_ID='508dd1e5-3fb7-482c-9caf-7219d733ade7';
 const SUPABASE_URL='https://pefkhiqzsaraiomtdkwh.supabase.co';
 const SUPABASE_KEY='sb_publishable_L2btgUZjvNwNKmqo69csKQ_H_UwkjBx';
+const IS_PRODUCTION_DEPLOYMENT=location.hostname==='weihnachtsmarkt-backen.vercel.app';
 let cloudReady=false, cloudApplying=false, cloudTimer=null, syncInFlight=false, syncAgain=false;
 let compareYear=null;
 const defaults={
@@ -23,7 +24,7 @@ const defaults={
   {name:'Kuvertüre / Schokolade',qty:0,unit:'kg',cost:0,done:false},
   {name:'Sonstiges',qty:0,unit:'Stück',cost:0,done:false}
  ],
- purchase:{buyer:'Familie 1',store:'',date:''},
+ purchase:{buyerKey:'family1',buyer:'Familie 1',store:'',date:''},
  planning:{hornBatches:0,cookieBatches:0,cookieKg:0,chocPerKg:200},
  production:{cookie:0,horn:0,mixed:0},
  productionEntries:[],productionHistoryMigrated:false,
@@ -108,12 +109,21 @@ function normalizeState(old, yearOverride, sourceStamp){
  merged.machine={...deep(defaults.machine),...((old&&old.machine)||{})};
  merged.stove={...deep(defaults.stove),...((old&&old.stove)||{})};
  merged.purchase={...deep(defaults.purchase),...((old&&old.purchase)||{})};
+ if(!merged.purchase.buyerKey){
+   merged.purchase.buyerKey=merged.purchase.buyer===merged.family2?'family2':merged.purchase.buyer==='Gemeinsam / Neutral'?'neutral':'family1';
+ }
  merged.planning={...deep(defaults.planning),...((old&&old.planning)||{})};
  if(!Array.isArray(merged.shopping)) merged.shopping=deep(defaults.shopping);
  merged.shopping=merged.shopping.map(x=>({...x,qty:Math.max(0,Math.round(n(x.qty))),unitPrice:x.unitPrice!==undefined?n(x.unitPrice):(n(x.qty)>0?n(x.cost)/n(x.qty):0)}));
  merged.energyLogs=Array.isArray(old&&old.energyLogs)?old.energyLogs:[];
  merged.saleEntries=Array.isArray(old&&old.saleEntries)?old.saleEntries:[];
- merged.purchaseEntries=Array.isArray(old&&old.purchaseEntries)?old.purchaseEntries:[];
+ merged.purchaseEntries=Array.isArray(old&&old.purchaseEntries)?old.purchaseEntries.map(entry=>{
+   if(entry.buyerKey)return entry;
+   if(entry.buyer===merged.family1)return {...entry,buyerKey:'family1'};
+   if(entry.buyer===merged.family2)return {...entry,buyerKey:'family2'};
+   if(entry.buyer==='Gemeinsam / Neutral'||entry.buyer==='Neutral')return {...entry,buyerKey:'neutral'};
+   return entry;
+ }):[];
  merged.productionEntries=Array.isArray(old&&old.productionEntries)?old.productionEntries:[];
  merged.production={...deep(defaults.production),...((old&&old.production)||{})};
  if(!merged.saleEntries.length && old && old.sales){
@@ -304,6 +314,7 @@ async function fetchCloudYear(apply=true){
  return false;
 }
 async function initCloud(){
+ if(!IS_PRODUCTION_DEPLOYMENT){cloudReady=false;setSyncStatus('Vorschau – isolierter lokaler Testbestand',false);return}
  if(syncInFlight)return;
  setSyncStatus(navigator.onLine?'Cloud wird verbunden …':'Offline – lokal gespeichert',false);
  if(!navigator.onLine){cloudReady=false;return}
@@ -329,8 +340,8 @@ async function initCloud(){
    setSyncStatus('Verbindung unterbrochen – erneuter Versuch …',false);
  }
 }
-setInterval(()=>{if(navigator.onLine&&!cloudReady)initCloud()},5000);
-addEventListener('online',()=>initCloud());
+setInterval(()=>{if(IS_PRODUCTION_DEPLOYMENT&&navigator.onLine&&!cloudReady)initCloud()},5000);
+addEventListener('online',()=>{if(IS_PRODUCTION_DEPLOYMENT)initCloud()});
 addEventListener('offline',()=>{cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false)});
 function archivedYear(year){
  try{
@@ -380,10 +391,26 @@ const isLegacyPurchase=item=>Boolean(item?.done&&!item?.purchaseEntryId&&item?.p
 const itemCost=x=>Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0));
 const shopTotalFor=state=>(state.purchaseEntries||[]).reduce((sum,e)=>sum+n(e.total),0)+(state.shopping||[]).filter(isLegacyPurchase).reduce((sum,x)=>sum+itemCost(x),0);
 const shopTotal=()=>shopTotalFor(s);
+function purchasePartyKey(entry,state=s){
+ if(entry?.buyerKey==='family1'||entry?.buyerKey==='family2'||entry?.buyerKey==='neutral')return entry.buyerKey;
+ if(entry?.buyer===state.family1)return 'family1';
+ if(entry?.buyer===state.family2)return 'family2';
+ if(entry?.buyer==='Gemeinsam / Neutral'||entry?.buyer==='Neutral')return 'neutral';
+ return 'legacy-unassigned';
+}
+function purchasePartyLabel(entry,state=s){
+ const key=purchasePartyKey(entry,state);
+ return key==='family1'?state.family1:key==='family2'?state.family2:key==='neutral'?'Gemeinsam / Neutral':entry?.buyer||'Nicht zugeordnet';
+}
+function neutralExpenses(state=s){
+ const purchases=(state.purchaseEntries||[]).reduce((sum,e)=>sum+(purchasePartyKey(e,state)==='neutral'?n(e.total):0),0);
+ const legacy=(state.shopping||[]).filter(isLegacyPurchase).reduce((sum,e)=>sum+(purchasePartyKey(e,state)==='neutral'?itemCost(e):0),0);
+ return purchases+legacy;
+}
 function familyExpenses(){
  const out={[s.family1]:0,[s.family2]:0};let unassigned=0;
- (s.purchaseEntries||[]).forEach(e=>{const cost=n(e.total);if(e.buyer&&Object.hasOwn(out,e.buyer))out[e.buyer]+=cost;else unassigned+=cost});
- s.shopping.filter(isLegacyPurchase).forEach(x=>{const cost=itemCost(x);if(x.buyer&&Object.hasOwn(out,x.buyer))out[x.buyer]+=cost;else unassigned+=cost});
+ (s.purchaseEntries||[]).forEach(e=>{const cost=n(e.total),key=purchasePartyKey(e);if(key==='family1')out[s.family1]+=cost;else if(key==='family2')out[s.family2]+=cost;else if(key==='legacy-unassigned')unassigned+=cost});
+ s.shopping.filter(isLegacyPurchase).forEach(x=>{const cost=itemCost(x),key=purchasePartyKey(x);if(key==='family1')out[s.family1]+=cost;else if(key==='family2')out[s.family2]+=cost;else if(key==='legacy-unassigned')unassigned+=cost});
  out[s.family1]=(out[s.family1]||0)+unassigned/2;out[s.family2]=(out[s.family2]||0)+unassigned/2;return out;
 }
 function saleTotals(){
@@ -414,14 +441,26 @@ function deviceWatts(device,state=s,ironCount){
  return n(state.oven?.watts)||3000;
 }
 function energyLogKwh(log){
+ if(log.kwh!==undefined&&Number.isFinite(Number(log.kwh)))return Math.max(0,Number(log.kwh));
  const mins=logMinutes(log);
  const watts=n(log.watts)||deviceWatts(log.device,s,log.ironCount);
  return watts/1000*(mins/60);
 }
-function energyLogCost(log){return energyLogKwh(log)*(log.powerPrice!==undefined?n(log.powerPrice):s.powerPrice)}
+function energyLogCost(log){
+ if(log.cost!==undefined&&Number.isFinite(Number(log.cost)))return Math.max(0,Number(log.cost));
+ return energyLogKwh(log)*(log.powerPrice!==undefined?n(log.powerPrice):s.powerPrice);
+}
 function energyLogsCost(){return (s.energyLogs||[]).reduce((a,l)=>a+energyLogCost(l),0)}
 
-const totalEnergy=()=>powerCost(s.oven,'oven')+powerCost(s.iron,'iron')+powerCost(s.machine,'machine')+powerCost(s.stove,'stove')+energyLogsCost();
+function flexibleRunningEnergyCost(state=s){
+ return (state.energyConfig?.devices||[]).reduce((sum,d)=>{
+   if(!d.running||!d.startAt)return sum;
+   const watts=n(d.runWatts)||n(d.watts)*(d.type==='Hörncheneisen'?(n(d.runIronCount)||n(d.ironCount)||1):1);
+   const price=d.runPowerPrice!==undefined?n(d.runPowerPrice):n(state.energyConfig?.prices?.[d.runFamily||d.family])||n(state.powerPrice);
+   return sum+(watts/1000)*(Math.max(0,Date.now()-d.startAt)/3600000)*price;
+ },0);
+}
+const totalEnergy=()=>powerCost(s.oven,'oven')+powerCost(s.iron,'iron')+powerCost(s.machine,'machine')+powerCost(s.stove,'stove')+energyLogsCost()+flexibleRunningEnergyCost();
 const profit=()=>revenue()-shopTotal()-totalEnergy();
 
 function shopHTML(x,i){
@@ -441,3 +480,4 @@ function renderShop(){
  if($('homeShopList'))$('homeShopList').innerHTML=html;$('fullShopList').innerHTML=html;
  const done=s.shopping.filter(isLegacyPurchase).length,open=s.shopping.length-done;
  if($('needCount'))$('needCount').textC
+

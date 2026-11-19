@@ -243,3 +243,4 @@ input,select{border-color:#dce5df;background:#fbfcfb}input:focus,select:focus{ou
  .energy-log-entry{grid-template-columns:1fr!important}.energy-log-value{text-align:left}.energy-log-fields{grid-template-columns:1fr 1fr}.energy-log-actions button{flex:1 1 150px}
 }
 @media(max-width:430px){.energy-log-fields{grid-template-columns:1fr}}
+
