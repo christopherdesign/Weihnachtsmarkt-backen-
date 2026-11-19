@@ -197,11 +197,11 @@ function markLocalChanges(previous,current){
  current._sync.deviceId=current._sync.deviceId||deviceId();
  current._sync.lastLocalChange=stamp;
 }
-function writeLocal(state,pending){
+function writeLocal(state,pending,extras={}){
  const key=PENDING_YEAR_PREFIX+state.year;
  const previous=readYearRecord(state.year);
  // State and pending IDs become durable in a single storage operation.
- const record={state,pending:pending??previous?.pending??[]};
+ const record={...previous,...extras,state,pending:pending??previous?.pending??[]};
  localStorage.setItem(key,JSON.stringify(record));
 }
 function pendingYears(){
@@ -215,12 +215,21 @@ function pendingYears(){
  }
  return years;
 }
-function save(){
+function save(operation){
  if(same(lastSavedSnapshot,s))return;
  try{
    const previous=readYearRecord(s.year);
    markLocalChanges(lastSavedSnapshot,s);
-   writeLocal(s,[...(previous?.pending||[]),makeId('change')]);
+   const id=operation?.id||makeId('change');
+   const labels={saleEntries:'Verkauf',productionEntries:'Produktion',purchaseEntries:'Einkauf',energyLogs:'Energie',shopping:'Einkaufsliste'};
+   const targets=[];
+   for(const [kind,label] of Object.entries(labels)){
+     const before=new Map((lastSavedSnapshot[kind]||[]).map(x=>[x.id,x]));
+     const after=new Map((s[kind]||[]).map(x=>[x.id,x]));
+     for(const key of new Set([...before.keys(),...after.keys()]))if(key&&!same(before.get(key),after.get(key)))targets.push({label,id:key});
+   }
+   const customer=operation&&(s.reservations||[]).find(r=>r.id===operation.reservationId)?.name;
+   writeLocal(s,[...(previous?.pending||[]),id],{details:{...previous?.details,[id]:{at:nowIso(),targets,operation,customer}}});
  }catch(error){
    s=deep(lastSavedSnapshot);
    setSyncStatus('Speicherfehler – Änderung nicht gespeichert',false);
@@ -290,7 +299,7 @@ function isPristineLocalState(state){
  const hasTombstones=Object.values(tombstones).some(group=>Object.keys(group||{}).length);
  const shoppingChanged=(state.shopping||[]).some(item=>n(item.qty)||n(item.cost)||n(item.unitPrice)||item.done);
  return !Object.keys(clocks).length&&!hasTombstones&&!shoppingChanged
-  &&!(state.saleEntries||[]).length&&!(state.energyLogs||[]).length&&!(state.purchaseEntries||[]).length&&!(state.productionEntries||[]).length
+  &&!(state.reservations||[]).length&&!(state.saleEntries||[]).length&&!(state.energyLogs||[]).length&&!(state.purchaseEntries||[]).length&&!(state.productionEntries||[]).length
   &&!n(state.production?.cookie)&&!n(state.production?.horn)&&!n(state.production?.mixed)
   &&!n(state.sales?.cookieSold)&&!n(state.sales?.hornSold)&&!n(state.sales?.mixedSold);
 }
@@ -301,21 +310,57 @@ function setSyncStatus(label,ok){
  if(l)l.textContent=label;
  if(c)c.textContent=label;
  if(d)d.style.background=ok?'#76d39b':'#ffd36e';
+ if(typeof globalThis.refreshSyncConflicts==='function')globalThis.refreshSyncConflicts();
 }
 const cloudStamps=new Map();
 let cloudPoll=null, cloudDelay=0;
-async function syncYear(year){
+const requestedSyncRetries=new Set();
+const stockConflictHelp={
+ WM_STOCK_INSUFFICIENT:'Freien Bestand prüfen. Verkauf, offene Reservierungsmenge oder Produktionskorrektur an den verfügbaren Bestand anpassen.',
+ WM_STOCK_STALE_RESERVATION:'Die Reservierung wurde auf einem anderen Gerät geändert. Mit dem aktuellen Stand abgleichen.',
+ WM_STOCK_PICKUP_SALE_MISMATCH:'Abholung und Verkauf stimmen nicht überein. Abholung über die Reservierung prüfen und korrigieren.',
+ WM_STOCK_INVALID_QUANTITY:'Die betroffene Menge prüfen; nur ganze, nichtnegative Stückzahlen sind zulässig.',
+ WM_STOCK_INVALID_SHAPE:'Der Datenstand kann nicht sicher übertragen werden. Lokale Sicherung exportieren und den Stand prüfen lassen.',
+ WM_STOCK_INVALID_RESERVATION:'Reservierung und Verlauf prüfen. Lokalen Stand vor einer Korrektur sichern.'
+};
+function holdSyncConflict(year,code,ids,cause=''){
+ const latest=readYearRecord(year);
+ if(!latest)return;
+ writeLocal(latest.state,latest.pending,{conflict:{code,ids:ids.filter(id=>latest.pending.includes(id)),cause,at:nowIso()}});
+}
+function cloudCandidate(local,remote,row,year,operations){
+ const merged=remote?(!local||isPristineLocalState(local)?remote:mergeStates(local,row.data,year,row.updated_at)):local;
+ if(!globalThis.Reservations||(!operations.length&&!Array.isArray(remote?.reservations)))return merged;
+ // Never merge reservation snapshots or their generated revenue entries by last-write-wins.
+ const pickupIds=new Set([...(local?.reservations||[]).flatMap(r=>r.pickups.map(p=>p.saleId)),...(remote?.reservations||[]).flatMap(r=>r.pickups.map(p=>p.saleId))]);
+ let candidate={...merged,reservations:deep(remote?.reservations||[]),
+   saleEntries:[...(merged.saleEntries||[]).filter(e=>!e.reservationId&&!pickupIds.has(e.id)),...(remote?.saleEntries||[]).filter(e=>e.reservationId)]};
+ for(const operation of operations){
+   try{candidate=Reservations.apply(candidate,operation)}
+   catch(error){error.reservationOperation=operation.id;throw error}
+ }
+ return candidate;
+}
+async function syncYear(year,retryConflict=false){
  for(let attempt=0;attempt<4;attempt++){
    const stored=readYearRecord(year);
    const local=stored?.state||archivedYear(year)||(Number(s.year)===year?lastSavedSnapshot:null);
    const pending=stored?.pending||[];
+   if(stored?.conflict&&!retryConflict)return 'conflict';
+   const operations=pending.map(id=>stored?.details?.[id]?.operation).filter(Boolean);
    const visibleStamp=await getCloudStamp(year);
    if(!pending.length&&cloudStamps.has(year)&&cloudStamps.get(year)===visibleStamp)return;
    const row=visibleStamp?await getCloudRow(year):null;
    if(visibleStamp&&!row)throw new Error('Cloud-Jahr beim Lesen verschwunden');
    if(!row&&(!local||isPristineLocalState(local))) {cloudStamps.set(year,'');return}
    const remote=row?normalizeState(row.data,year,row.data?._sync?.migratedAt||row.updated_at):null;
-   const merged=remote?(!local||isPristineLocalState(local)?remote:mergeStates(local,row.data,year,row.updated_at)):local;
+   let merged;
+   try{merged=cloudCandidate(local,remote,row,year,operations)}
+   catch(error){
+     if(!error.reservationOperation)throw error;
+     holdSyncConflict(year,'WM_STOCK_STALE_RESERVATION',[error.reservationOperation],error.message);
+     return 'conflict';
+   }
    let acknowledged=row?.updated_at||'';
    if(!remote||!same(merged,remote)){
      const stamp=new Date(Math.max(Date.now(),(Date.parse(acknowledged)||0)+1)).toISOString();
@@ -324,16 +369,28 @@ async function syncYear(year){
      let saved;
      try{
        saved=await cloudRequest(row?query+'&workspace_id=eq.'+encodeURIComponent(workspaceId())+'&year=eq.'+year+'&updated_at=eq.'+encodeURIComponent(acknowledged):query,{...options,method:row?'PATCH':'POST'});
-     }catch(error){if(error.status===409)continue;throw error}
+     }catch(error){
+       let code;try{code=JSON.parse(error.detail).message}catch{}
+       if(Object.hasOwn(stockConflictHelp,code)){holdSyncConflict(year,code,pending);return 'conflict'}
+       if(error.status===409)continue;
+       throw error;
+     }
      if(!saved?.[0]?.updated_at)continue;
      acknowledged=saved[0].updated_at;
    }
    const latest=readYearRecord(year);
-   const concurrent=latest?.pending.some(id=>!pending.includes(id));
-   const next=concurrent?mergeStates(latest.state,merged,year,acknowledged):merged;
-   if(concurrent&&latest.state._sync?.lastLocalChange)next._sync.lastLocalChange=latest.state._sync.lastLocalChange;
    const remaining=(latest?.pending||[]).filter(id=>!pending.includes(id));
-   writeLocal(next,remaining);
+   const concurrent=remaining.length>0;
+   let next=merged, conflict=null;
+   if(concurrent){
+     try{next=cloudCandidate(latest.state,merged,{data:merged,updated_at:acknowledged},year,remaining.map(id=>latest.details?.[id]?.operation).filter(Boolean))}
+     catch(error){
+       next=latest.state;
+       conflict={code:'WM_STOCK_STALE_RESERVATION',ids:[error.reservationOperation],cause:error.message,at:nowIso()};
+     }
+   }
+   if(concurrent&&latest.state._sync?.lastLocalChange)next._sync.lastLocalChange=latest.state._sync.lastLocalChange;
+   writeLocal(next,remaining,{conflict,details:Object.fromEntries(remaining.filter(id=>latest?.details?.[id]).map(id=>[id,latest.details[id]]))});
    if(Number(s.year)===year){s=next;lastSavedSnapshot=deep(s);render()}
    cloudStamps.set(year,acknowledged);
    return;
@@ -349,9 +406,10 @@ async function initCloud(force=false){
  syncInFlight=true;
  try{
    if(pendingYears().length||!cloudReady)setSyncStatus('Übertragung läuft …',false);
-   for(const year of new Set([Number(s.year),...pendingYears()]))await syncYear(year);
+   for(const year of new Set([Number(s.year),...pendingYears()]))await syncYear(year,requestedSyncRetries.delete(year));
    cloudReady=true;cloudDelay=0;
-   setSyncStatus(pendingYears().length?'Lokal gespeichert':'Synchronisiert',!pendingYears().length);
+   const hasConflict=pendingYears().some(year=>readYearRecord(year).conflict);
+   setSyncStatus(hasConflict?'Konflikt – Klärung erforderlich':pendingYears().length?'Lokal gespeichert':'Synchronisiert',!pendingYears().length);
  }catch(e){
    cloudReady=false;
    cloudDelay=Math.min(120000,Math.max(15000,cloudDelay*2));
