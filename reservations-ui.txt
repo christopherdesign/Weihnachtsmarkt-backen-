@@ -1,0 +1,69 @@
+
+// Deliberately preview-only until server-side stock invariants and the release gate are verified.
+if(!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations){
+ const card=document.createElement('div');
+ card.className='card';
+ card.innerHTML='<h2>Reservierungen und Teilabholungen</h2><p class="note">Vorschau: Testdaten bleiben auf diesem Gerät.</p><form id="reserveCreate"></form><div id="reserveList"></div><p id="reserveMessage" role="status"></p>';
+ document.querySelector('#sales .grid').append(card);
+ const captions={cookie:'Kekse',horn:'Hörnchen',mixed:'½/½'};
+ const fields=(q={},max={})=>'<div class="row">'+Reservations.products.map(k=>'<label class="c4 sm12">'+captions[k]+'<input type="number" min="0" step="1" name="'+k+'" value="'+(q[k]||0)+'" '+(max[k]===undefined?'':'max="'+max[k]+'"')+' required></label>').join('')+'</div>';
+ const quantities=form=>Object.fromEntries(Reservations.products.map(k=>[k,Number(form.elements[k].value)]));
+ const message=t=>{$('reserveMessage').textContent=t};
+ function run(cmd){
+   try{
+     const next=Reservations.apply(s,{id:makeId('reservation-op'),at:nowIso(),...cmd});
+     s=next;save();
+   }catch(error){message(error.message);return false}
+   render();message('Vorgang lokal gespeichert.');
+   return true;
+ }
+ $('reserveCreate').innerHTML='<div class="row"><label class="c4 sm12">Kundenname<input name="customer" maxlength="120" required></label><label class="c4 sm12">Datum<input type="date" name="date" required></label><label class="c4 sm12">Abholtermin (optional)<input name="pickup" type="date"></label></div><label>Bemerkung (optional)<input name="note" maxlength="300"></label>'+fields()+'<button type="submit" class="primary">Reservierung anlegen</button>';
+ $('reserveCreate').elements.date.value=localToday();
+ $('reserveCreate').onsubmit=event=>{
+   event.preventDefault();
+   const form=event.currentTarget,f=form.elements;
+   if(run({type:'create',reservationId:makeId('reservation'),name:f.customer.value,date:f.date.value,pickupDate:f.pickup.value,note:f.note.value,quantities:quantities(form)})){
+     form.reset();f.date.value=localToday();
+   }
+ };
+ function renderReservations(){
+   const list=$('reserveList');
+   list.innerHTML='';
+   for(const record of s.reservations||[]){
+     const item=document.createElement('article');
+     item.className='card';
+     const open=Reservations.products.map(k=>captions[k]+': '+record.open[k]).join(' · ');
+     item.innerHTML='<h3>'+esc(record.name)+' · '+esc(Reservations.status(record))+'</h3><div class="muted">'+esc(record.date)+(record.pickupDate?' · Abholung: '+esc(record.pickupDate):'')+'</div><p>'+esc(record.note)+'</p><p>Offen: '+esc(open)+'</p>';
+     const submit=(type,cmd)=>run({type,reservationId:record.id,revision:record.revision,...cmd});
+     if(Reservations.products.some(k=>record.open[k]>0)){
+       const form=document.createElement('form');
+       form.innerHTML=fields({},record.open)+'<div class="actions"><button class="primary" value="pickup">Abholung buchen</button><button class="secondary" value="cancel">Mengen stornieren</button></div>';
+       form.onsubmit=event=>{
+         event.preventDefault();
+         const type=event.submitter.value;
+         if(type==='cancel'&&!confirm('Ausgewählte Restmengen stornieren?'))return;
+         submit(type,{quantities:quantities(form),date:localToday(),priceCents:Object.fromEntries(Reservations.products.map(k=>[k,Math.round(n(s.salePrices[k])*100)]))});
+       };
+       item.append(form);
+       const change=document.createElement('form');
+       change.innerHTML='<div class="muted">Offene Mengen ändern</div>'+fields(record.open)+'<button class="secondary">Mengenänderung speichern</button>';
+       change.onsubmit=event=>{event.preventDefault();submit('change',{quantities:quantities(change)})};
+       item.append(change);
+     }
+     for(const pickup of record.pickups){
+       const line=document.createElement('p');
+       line.textContent=new Date(pickup.at).toLocaleString('de-DE')+' · '+Reservations.products.map(k=>captions[k]+': '+pickup.quantities[k]+' × '+eur(pickup.priceCents[k]/100)).join(' · ')+(pickup.voidedAt?' · korrigiert: '+pickup.voidReason:'');
+       item.append(line);
+       if(!pickup.voidedAt){
+         const button=document.createElement('button');button.className='secondary';button.textContent='Abholung korrigieren';
+         button.onclick=()=>{const reason=prompt('Korrekturgrund:');if(reason?.trim())submit('reverse',{pickupId:pickup.id,reason})};
+         item.append(button);
+       }
+     }
+     list.append(item);
+   }
+ }
+ const renderBeforeReservations=render;
+ render=function(){renderBeforeReservations();renderReservations()};
+ renderReservations();
+}
