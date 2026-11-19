@@ -50,6 +50,20 @@ const kwh=(count,wattsEach,mins)=>count*wattsEach/1000*mins/60;
 assert.equal(kwh(8,800,60),6.4);
 assert.equal(kwh(6,800,60),4.8);
 
+// Per-device merge rehearsal: changes on two phones must coexist; tombstones win.
+const mergeEntities=(left,right,tombstones={})=>{
+  const items=new Map();
+  for(const item of [...right,...left]){const old=items.get(item.id);if(!old||String(item._updatedAt)>=String(old._updatedAt))items.set(item.id,item)}
+  return [...items.values()].filter(item=>String(tombstones[item.id]||'')<String(item._updatedAt||''));
+};
+const phoneA=[{id:'dev-roemer-iron',running:true,_updatedAt:'2026-11-19T10:00:00Z'}];
+const phoneB=[{id:'dev-rusche-iron',running:true,_updatedAt:'2026-11-19T10:00:01Z'}];
+assert.deepEqual(mergeEntities(phoneA,phoneB).map(x=>x.id).sort(),['dev-roemer-iron','dev-rusche-iron']);
+assert.equal(mergeEntities(phoneA,phoneB,{'dev-roemer-iron':'2026-11-19T10:00:02Z'}).some(x=>x.id==='dev-roemer-iron'),false);
+const app1=fs.readFileSync(root+'/app1.txt','utf8'),app5=fs.readFileSync(root+'/app5.txt','utf8');
+assert.match(app1,/getPath\(remote,kind\)/,'nested arrays must use generic merge paths');
+assert.match(app5,/ARRAY_KEYS\.includes\('energyConfig\.devices'\)/,'energy devices must participate in entity merge/tombstones');
+
 // Immutable web release and root must contain the same deployable program files.
 for(const name of ['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','style.css']){
   assert.equal(fs.readFileSync(root+'/'+name,'utf8'),fs.readFileSync(root+'/mobile-releases/10.5.3/'+name,'utf8'),name+' differs from immutable release');

@@ -17,7 +17,9 @@
      ]
    };
  }
- if(!SYNC_PATHS.includes('energyConfig'))SYNC_PATHS.push('energyConfig');
+ const oldEnergyConfigPath=SYNC_PATHS.indexOf('energyConfig');if(oldEnergyConfigPath>=0)SYNC_PATHS.splice(oldEnergyConfigPath,1);
+ if(!SYNC_PATHS.includes('energyConfig.prices'))SYNC_PATHS.push('energyConfig.prices');
+ if(!ARRAY_KEYS.includes('energyConfig.devices'))ARRAY_KEYS.push('energyConfig.devices');
  function cfg(){s.energyConfig=s.energyConfig||{prices:{},devices:[]};s.energyConfig.prices=s.energyConfig.prices||{};s.energyConfig.devices=s.energyConfig.devices||[];return s.energyConfig}
  const initialCfg=cfg();
  if(!initialCfg.devices.some(d=>d.id==='dev-rusche-iron'))initialCfg.devices.push({id:'dev-rusche-iron',family:s.family2,type:'Hörncheneisen',name:'Cloer Hörncheneisen',watts:800,ironCount:1,running:false,startAt:null});

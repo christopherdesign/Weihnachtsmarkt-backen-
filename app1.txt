@@ -86,7 +86,8 @@ function ensureSyncShape(state,sourceStamp){
  state._sync.tombstones={...(state._sync.tombstones||{})};
  ARRAY_KEYS.forEach(kind=>{
    state._sync.tombstones[kind]={...(state._sync.tombstones[kind]||{})};
-   state[kind]=(state[kind]||[]).map((item,i)=>({...item,id:entityId(kind,item,i),_updatedAt:item._updatedAt||stamp}));
+   const items=getPath(state,kind)||[];
+   setPath(state,kind,items.map((item,i)=>({...item,id:entityId(kind,item,i),_updatedAt:item._updatedAt||stamp})));
  });
  return state;
 }
@@ -176,12 +177,13 @@ function markLocalChanges(previous,current){
  current._sync=ensureSyncShape(current,current?._sync?.migratedAt)._sync;
  SYNC_PATHS.forEach(path=>{if(!same(getPath(previous,path),getPath(current,path)))current._sync.fieldClocks[path]=stamp});
  ARRAY_KEYS.forEach(kind=>{
-   const before=new Map((previous?.[kind]||[]).map((x,i)=>[entityId(kind,x,i),x]));
-   const after=new Map((current?.[kind]||[]).map((x,i)=>[entityId(kind,x,i),x]));
-   current[kind]=(current[kind]||[]).map((item,i)=>{
+   const beforeItems=getPath(previous,kind)||[],afterItems=getPath(current,kind)||[];
+   const before=new Map(beforeItems.map((x,i)=>[entityId(kind,x,i),x]));
+   const after=new Map(afterItems.map((x,i)=>[entityId(kind,x,i),x]));
+   setPath(current,kind,afterItems.map((item,i)=>{
      const id=entityId(kind,item,i),old=before.get(id);
      return {...item,id,_updatedAt:!old||!same({...old,_updatedAt:undefined},{...item,_updatedAt:undefined})?stamp:(item._updatedAt||old._updatedAt||stamp)};
-   });
+   }));
    before.forEach((_,id)=>{if(!after.has(id))current._sync.tombstones[kind][id]=stamp});
  });
  current._sync.deviceId=current._sync.deviceId||deviceId();
@@ -230,11 +232,11 @@ function mergeStates(localRaw,cloudRaw,year,cloudStamp){
    const tomb={...(remote._sync.tombstones?.[kind]||{}),...(local._sync.tombstones?.[kind]||{})};
    Object.keys(tomb).forEach(id=>tomb[id]=newerStamp(local._sync.tombstones?.[kind]?.[id],remote._sync.tombstones?.[kind]?.[id]));
    const items=new Map();
-   [...(remote[kind]||[]),...(local[kind]||[])].forEach((item,i)=>{
+   [...(getPath(remote,kind)||[]),...(getPath(local,kind)||[])].forEach((item,i)=>{
      const id=entityId(kind,item,i),old=items.get(id);
      if(!old||String(item._updatedAt||'')>=String(old._updatedAt||''))items.set(id,{...item,id});
    });
-   merged[kind]=[...items.values()].filter(item=>String(tomb[item.id]||'')<String(item._updatedAt||''));
+   setPath(merged,kind,[...items.values()].filter(item=>String(tomb[item.id]||'')<String(item._updatedAt||'')));
    merged._sync.tombstones[kind]=tomb;
  });
  merged._sync.schema=2;
