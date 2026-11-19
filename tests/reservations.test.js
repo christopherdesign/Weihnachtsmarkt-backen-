@@ -6,6 +6,29 @@ const fixture=()=>({production:q(5,4,3),saleEntries:[]});
 const cmd=(type,id,fields={})=>({type,id,reservationId:'r1',at:'2026-11-19T12:01:00Z',...fields});
 const create=cmd('create','new',{name:'Testkunde',date:'2026-11-19',quantities:q(4,2)});
 
+test('bestehende Reservierung ändert alle Stammdaten und Gesamtmengen, ohne Teilumsatz umzuschreiben',()=>{
+ const original=r.apply(fixture(),create);
+ const edited=r.apply(original,cmd('edit','edit-1',{revision:1,name:'Neue Kundin',date:'2026-11-20',pickupDate:'2026-11-23',note:'Hintereingang',quantities:q(5,1)}));
+ assert.deepEqual(r.remainingStock(edited),q(0,3,3));
+ const picked=r.apply(edited,cmd('pickup','edit-p1',{revision:2,quantities:q(2,1),priceCents:q(1234,1200)}));
+ const command=cmd('edit','edit-2',{revision:3,name:'Neue Kundin',date:'2026-11-21',pickupDate:'',note:'Termin offen',quantities:q(3,1)});
+ const next=r.apply(picked,command),record=next.reservations[0];
+ assert.equal(record.name,'Neue Kundin');
+ assert.equal(record.date,'2026-11-21');
+ assert.equal(record.pickupDate,'');
+ assert.equal(record.note,'Termin offen');
+ assert.deepEqual(record.open,q(1));
+ assert.deepEqual(r.fulfilled(record),q(2,1));
+ assert.deepEqual(next.saleEntries,picked.saleEntries);
+ assert.deepEqual(record.pickups,picked.reservations[0].pickups);
+ assert.deepEqual(record.audit.slice(0,-1),picked.reservations[0].audit);
+ assert.deepEqual(r.remainingStock(next),q(2,3,3));
+ assert.throws(()=>r.apply(picked,{...command,id:'under',quantities:q(1,1)}),/abgeholten Menge/);
+ assert.throws(()=>r.apply(picked,{...command,id:'date',date:'2026-02-30'}),/Reservierungsdatum/);
+ const reordered=Object.fromEntries(Object.entries(command).reverse());
+ assert.equal(r.apply(next,reordered),next);
+});
+
 test('Reservierung bindet Bestand ohne Umsatz; Teilabholung und Korrektur mindern nicht doppelt',()=>{
   const s=r.apply(fixture(),create);
   assert.deepEqual(r.remainingStock(s),q(1,2,3));
