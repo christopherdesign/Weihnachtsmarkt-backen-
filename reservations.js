@@ -13,6 +13,22 @@
     return [k,q[k]];
   }));
   const sum = (a,b,sign=1) => Object.fromEntries(products.map(k=>[k,a[k]+sign*b[k]]));
+  const fulfilled = r => r.pickups.filter(p=>!p.voidedAt).reduce((a,p)=>sum(a,p.quantities),zero());
+  const reservedTotal = r => sum(r.open,fulfilled(r));
+  const canonical = x => Array.isArray(x) ? x.map(canonical) :
+    x && typeof x==='object' ? Object.fromEntries(Object.keys(x).sort().map(k=>[k,canonical(x[k])])) : x;
+  const equal = (a,b) => JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+  const validDate = text => {
+    if(typeof text!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(text))return false;
+    const parsed=new Date(text+'T00:00:00Z');
+    return Number.isFinite(+parsed)&&parsed.toISOString().slice(0,10)===text;
+  };
+  function metadata(cmd) {
+    if(typeof cmd.name!=='string'||!cmd.name.trim()||cmd.name.trim().length>120||!validDate(cmd.date))throw Error('Ein gültiger Name und ein gültiges Reservierungsdatum sind erforderlich.');
+    const pickupDate=cmd.pickupDate??'',note=cmd.note??'';
+    if((pickupDate!==''&&!validDate(pickupDate))||typeof note!=='string'||note.length>300)throw Error('Bitte Abholtermin oder Bemerkung prüfen.');
+    return {name:cmd.name.trim(),date:cmd.date,pickupDate,note};
+  }
   function openTotals(state) {
     return (state.reservations||[]).reduce((a,r)=>sum(a,r.open),zero());
   }
@@ -31,7 +47,7 @@
     if (!cmd.id || !cmd.reservationId || !Number.isFinite(Date.parse(cmd.at))) throw Error('Ungültiger Vorgang.');
     const sameId=(previous.reservations||[]).flatMap(r=>r.audit).find(e=>e.id===cmd.id);
     if (sameId) {
-      if (JSON.stringify(sameId)!==JSON.stringify(cmd)) throw Error('Vorgangs-ID bereits anders verwendet.');
+      if (!equal(sameId,cmd)) throw Error('Vorgangs-ID bereits anders verwendet.');
       return previous;
     }
     const s=structuredClone(previous);
@@ -39,17 +55,25 @@
     s.saleEntries??=[];
     let r=s.reservations.find(r=>r.id===cmd.reservationId);
     if (cmd.type==='create') {
-      if (r||!cmd.name?.trim()||!/^\d{4}-\d{2}-\d{2}$/.test(cmd.date||'')) throw Error('Name und Datum sind erforderlich.');
-      r={id:cmd.reservationId,name:cmd.name.trim(),date:cmd.date,pickupDate:cmd.pickupDate||'',note:cmd.note||'',
+      if (r) throw Error('Reservierungs-ID bereits verwendet.');
+      r={id:cmd.reservationId,...metadata(cmd),
         open:zero(),cancelled:zero(),pickups:[],audit:[],revision:0};
       s.reservations.push(r);
     } else if (!r||r.revision!==cmd.revision) throw Error('Reservierung wurde inzwischen geändert. Bitte neu prüfen.');
-    const q=cmd.type==='reverse'?null:quantity(cmd.quantities);
-    if (cmd.type!=='change'&&q&&!active(q)) throw Error('Mindestens einen Eimer auswählen.');
-    if (cmd.type==='create'||cmd.type==='change') {
+    let q=cmd.type==='reverse'?null:quantity(cmd.quantities);
+    if (cmd.type==='edit') {
+      const sold=fulfilled(r);
+      if(products.some(k=>q[k]<sold[k]))throw Error('Gesamtmenge darf nicht unter der bereits abgeholten Menge liegen.');
+      q=sum(q,sold,-1);
+      if(!active(r.open)&&active(q))throw Error('Abgeschlossene Reservierungen dürfen nicht erneut geöffnet werden.');
+      Object.assign(r,metadata(cmd));
+    }
+    if (!['change','edit'].includes(cmd.type)&&q&&!active(q)) throw Error('Mindestens einen Eimer auswählen.');
+    if (cmd.type==='create'||cmd.type==='change'||cmd.type==='edit') {
       const stock=remainingStock(s);
       if (products.some(k=>q[k]>r.open[k]&&q[k]-r.open[k]>stock[k])) throw Error('Nicht genügend freier Bestand.');
-      if (!active(q)) throw Error('Zum Auflösen der Restmenge bitte Stornierung verwenden.');
+      if(cmd.type==='change'&&!active(r.open)&&active(q))throw Error('Abgeschlossene Reservierungen dürfen nicht erneut geöffnet werden.');
+      if (!active(q)&&active(r.open)) throw Error('Zum Auflösen der Restmenge bitte Stornierung verwenden.');
       r.open=q;
     } else if (cmd.type==='pickup'||cmd.type==='cancel') {
       if (products.some(k=>q[k]>r.open[k])) throw Error('Menge übersteigt die noch offene Reservierung.');
@@ -73,5 +97,5 @@
     r.revision++;
     return s;
   }
-  return {apply,remainingStock,openTotals,status,products};
+  return {apply,remainingStock,openTotals,status,products,fulfilled,reservedTotal};
 });
