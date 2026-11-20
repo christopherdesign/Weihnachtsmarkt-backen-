@@ -1,5 +1,5 @@
 if($('doneCount'))$('doneCount').textContent=done+' gekauft';if($('shopCost'))$('shopCost').textContent=eur(shopTotal())+' erfasst';
- $('baseIngredients').innerHTML=s.shopping.map((x,i)=>`<div class="ing"><strong>${esc(x.name)}</strong><span>${x.qty||0}</span><span>${esc(x.unit)}</span><span class="ingcost money">${eur(x.cost)}</span><button class="danger ingdel" data-bi="${i}">×</button></div>`).join('');
+ $('baseIngredients').innerHTML=s.shopping.map(x=>`<div class="ing"><strong>${esc(x.name)}</strong><span>${x.qty||0}</span><span>${esc(x.unit)}</span><span class="ingcost money">${eur(x.cost)}</span><button class="danger ingdel" data-bi="${esc(x.id||'')}">×</button></div>`).join('');
 }
 
 function recipeNeeds(){
@@ -82,6 +82,7 @@ function renderProductionHistory(){
    const q=productionEntryValues(entry),label=entry.legacy?'Übernommener Bestand':(entry.date?new Date(entry.date+'T12:00:00').toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}):'Ohne Datum');
    return `<article class="production-entry"><div class="salehead"><div><strong>${label}</strong><div class="muted">${q.cookie+q.horn+q.mixed} Eimer insgesamt</div></div></div><details class="production-entry-edit"><summary>Eintrag bearbeiten</summary><div class="production-entry-fields"><label>Datum<input type="date" data-production-field="date" value="${esc(entry.date||'')}"></label><label>🍪 Kekse<input type="number" min="0" step="1" data-production-field="cookie" value="${q.cookie}"></label><label>🧇 Hörnchen<input type="number" min="0" step="1" data-production-field="horn" value="${q.horn}"></label><label>🍪🍫 ½/½<input type="number" min="0" step="1" data-production-field="mixed" value="${q.mixed}"></label></div><div class="production-entry-actions"><button class="primary" type="button" data-productionsave="${esc(entry.id)}">Änderungen speichern</button><button class="danger" type="button" data-productiondelete="${esc(entry.id)}">Eintrag löschen</button></div></details></article>`;
  }).join(''):'<div class="muted">Noch keine Produktion gespeichert.</div>';
+ box.querySelectorAll('.production-entry-edit').forEach((form,i)=>{form.dataset.recordVersion=entries[i]._updatedAt||''});
 }
 function renderSaleDraft(){
  if(!$('saleCookieCount'))return;
