@@ -49,7 +49,7 @@ if(!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations){
      const next=Reservations.apply(s,operation);
      s=next;save(operation);
    }catch(error){message(error.message);return false}
-   render();message('Vorgang lokal gespeichert.');
+   formRenderGuard.finish();render();message('Vorgang lokal gespeichert.');
    return true;
  }
  $('reserveCreate').innerHTML='<div class="row"><label class="c4 sm12">Kundenname<input name="customer" maxlength="120" required></label><label class="c4 sm12">Datum<input type="date" name="date" required></label><label class="c4 sm12">Abholtermin (optional)<input name="pickup" type="date"></label></div><label>Bemerkung (optional)<input name="note" maxlength="300"></label>'+fields()+'<button type="submit" class="primary">Reservierung anlegen</button>';
