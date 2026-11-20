@@ -315,6 +315,9 @@ function setSyncStatus(label,ok){
 const cloudStamps=new Map();
 let cloudPoll=null, cloudDelay=0;
 const requestedSyncRetries=new Set();
+function requestBackgroundRender(){
+ if(!globalThis.formRenderGuard?.defer())render();
+}
 const stockConflictHelp={
  WM_STOCK_INSUFFICIENT:'Freien Bestand prüfen. Verkauf, offene Reservierungsmenge oder Produktionskorrektur an den verfügbaren Bestand anpassen.',
  WM_STOCK_STALE_RESERVATION:'Die Reservierung wurde auf einem anderen Gerät geändert. Mit dem aktuellen Stand abgleichen.',
@@ -391,7 +394,7 @@ async function syncYear(year,retryConflict=false){
    }
    if(concurrent&&latest.state._sync?.lastLocalChange)next._sync.lastLocalChange=latest.state._sync.lastLocalChange;
    writeLocal(next,remaining,{conflict,details:Object.fromEntries(remaining.filter(id=>latest?.details?.[id]).map(id=>[id,latest.details[id]]))});
-   if(Number(s.year)===year){s=next;lastSavedSnapshot=deep(s);render()}
+   if(Number(s.year)===year){s=next;lastSavedSnapshot=deep(s);requestBackgroundRender()}
    cloudStamps.set(year,acknowledged);
    return;
  }
@@ -446,6 +449,9 @@ function availableYears(){
 }
 function switchYear(year){
  year=Number(year); if(year===Number(s.year))return;
+ if(globalThis.beforeFormNavigation&&!beforeFormNavigation()){
+   $('activeYearSelect').value=String(s.year);return;
+ }
  save();
  const existing=archivedYear(year);
  const next=existing||freshYear(year);
@@ -546,7 +552,7 @@ const profit=()=>revenue()-shopTotal()-totalEnergy();
 function shopHTML(x,i){
  const qty=Math.max(0,Math.round(n(x.qty)));
  const price=n(x.unitPrice!==undefined?x.unitPrice:(qty>0?n(x.cost)/qty:0));
- return `<div class="shopitem ${x.done?'done':''}">
+ return `<div class="shopitem ${x.done?'done':''}" data-shop-id="${esc(x.id||'')}">
   <input class="checkbox" type="checkbox" data-action="done" data-i="${i}" ${x.done?'checked':''}>
   <input class="shopname" data-action="name" data-i="${i}" value="${esc(x.name)}">
   <div class="stepper"><button class="secondary" data-action="minus" data-i="${i}" type="button">−</button><div class="count">${qty}</div><button class="secondary" data-action="plus" data-i="${i}" type="button">+</button></div>
