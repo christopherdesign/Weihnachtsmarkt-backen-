@@ -103,6 +103,9 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.locator('[data-page="settings"]').click();
   assert.equal(await page.locator('#flexLogStart').inputValue(),'');
   for(const [tab,selector] of [['settings','#activeYearSelect'],['plan','#productionDate'],['shop','#buyer'],['sales','#saleDateSelect']]){
+    // Close the previous field and restore the viewport before tapping the
+    // fixed navigation; mobile emulation may scroll the focused picker into it.
+    await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0)});
     await page.locator('[data-page="'+tab+'"]').click();
     const control=page.locator(selector);
     await control.focus();
