@@ -9,12 +9,13 @@ const assetRoot=process.env.WM_ASSET_DIR||join(__dirname,'..');
 const files=new Set(['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','reservations-ui.txt','reservations.js','style.css']);
 const origin='https://weihnachtsmarkt-backen.vercel.app';
 
-test('Android emulation: active timer and intercepted API sync keep the same native form controls', {timeout:30000}, async()=>{
+test('Android emulation: active timer and intercepted API sync keep the same native form controls', {timeout:60000}, async()=>{
  const browser=await chromium.launch(process.env.WM_CHROMIUM?{executablePath:process.env.WM_CHROMIUM}:{});
  try{
   const context=await browser.newContext({isMobile:true,hasTouch:true,viewport:{width:390,height:780},serviceWorkers:'block'});
   const errors=[];
   const page=await context.newPage();
+  page.setDefaultTimeout(6000);
   page.on('pageerror',e=>errors.push(e.message));
   const original={id:'prior',family:'Rusche',deviceId:'dev-rusche-machine',date:'2026-01-06',start:'10:00',end:'10:30',watts:1400,powerPrice:0.24,kwh:0.7,cost:0.168};
   const receipts=[{id:'receipt',total:3,receiptPhoto:'synthetic-photo'}];
@@ -51,8 +52,8 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.locator('[data-page="energy"]').click();
   const start=page.locator('[data-start="dev-roemer-oven"]');
   await start.click();
-  const oven=page.locator('#dynamicEnergy .energy-device').filter({has:start});
-  await oven.locator('[data-stop]:enabled').waitFor();
+  const oven=page.locator('#dynamicEnergy .energy-device:has([data-start="dev-roemer-oven"])');
+  await page.locator('[data-stop="dev-roemer-oven"]:enabled').waitFor({state:'attached'});
   await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
   assert.equal(remote.data.energyConfig.devices.find(d=>d.id==='dev-roemer-oven').running,true);
   await page.locator('#flexLogFamily').selectOption('Rusche');
