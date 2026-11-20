@@ -8,6 +8,7 @@ const today=new Date().getFullYear();
 const assetRoot=process.env.WM_ASSET_DIR||join(__dirname,'..');
 const files=new Set(['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','reservations-ui.txt','reservations.js','style.css']);
 const origin='https://weihnachtsmarkt-backen.vercel.app';
+const preview='https://wm-popup-test.example';
 
 test('Android emulation: active timer and intercepted API sync keep the same native form controls', {timeout:60000}, async()=>{
  const browser=await chromium.launch(process.env.WM_CHROMIUM?{executablePath:process.env.WM_CHROMIUM}:{});
@@ -29,7 +30,7 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   let reads=0,writes=0;
   await context.route('**/*',async route=>{
     const u=new URL(route.request().url()),file=u.pathname==='/'?'index.html':u.pathname.slice(1);
-    if(u.origin===origin&&files.has(file)){
+    if([origin,preview].includes(u.origin)&&files.has(file)){
       const contentType=file.endsWith('.html')?'text/html':file.endsWith('.js')?'application/javascript':file.endsWith('.css')?'text/css':'text/plain';
       return route.fulfill({body:readFileSync(join(assetRoot,file)),contentType});
     }
@@ -119,6 +120,34 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
     assert.ok(await control.evaluate(el=>window.pickerBefore===el&&document.activeElement===el),tab);
     assert.equal(await control.inputValue(),before,tab);
   }
+  // Reservation UI is intentionally preview-only. Exercise the same guarded
+  // repaint through a settings input event without connecting a cloud backend.
+  await page.goto(preview+'/');
+  await page.locator('#reserveCreate').waitFor({state:'attached'});
+  await page.locator('[data-page="plan"]').press('Enter');
+  await page.locator('#madeCookiePlus').press('Enter');
+  await page.locator('#madeCookiePlus').press('Enter');
+  await page.locator('#saveProduction').press('Enter');
+  await page.locator('[data-page="sales"]').press('Enter');
+  const reserve=page.locator('#reserveCreate');
+  await reserve.locator('[name="customer"]').fill('Isolierter Popup-Test');
+  await reserve.locator('[name="cookie"]').fill('2');
+  const verifyReservationDraft=async(field,value)=>{
+    await field.focus();
+    await field.evaluate(el=>{window.pickerBefore=el});
+    await page.locator('#family1').dispatchEvent('input');
+    assert.ok(await field.evaluate(el=>window.pickerBefore===el&&document.activeElement===el));
+    assert.equal(await field.inputValue(),value);
+  };
+  const pickupDate=reserve.locator('[name="pickup"]');
+  await pickupDate.fill('2026-11-21');
+  await verifyReservationDraft(pickupDate,'2026-11-21');
+  await reserve.locator('button[type="submit"]').press('Enter');
+  const partial=page.locator('#reserveList form').first();
+  await partial.locator('[name="cookie"]').fill('1');
+  await verifyReservationDraft(partial.locator('[name="cookie"]'),'1');
+  await partial.locator('[value="pickup"]').press('Enter');
+  assert.match(await page.locator('#reserveList').textContent(),/Isolierter Popup-Test.*Teilweise abgeholt.*Offen: Kekse: 1/s);
   assert.deepEqual(errors,[]);
  }finally{await browser.close()}
 });
