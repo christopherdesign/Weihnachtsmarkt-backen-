@@ -51,6 +51,10 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.locator('[data-page="energy"]').click();
   const start=page.locator('[data-start="dev-roemer-oven"]');
   await start.click();
+  const oven=page.locator('#dynamicEnergy .energy-device').filter({has:start});
+  await oven.locator('[data-stop]:enabled').waitFor();
+  await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
+  assert.equal(remote.data.energyConfig.devices.find(d=>d.id==='dev-roemer-oven').running,true);
   await page.locator('#flexLogFamily').selectOption('Rusche');
   await page.locator('#flexLogDevice').selectOption('dev-rusche-machine');
   await page.locator('#flexLogDate').fill('2026-11-20');
@@ -70,7 +74,7 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   assert.ok(reads>readsBefore,'a remote state was fetched in the middle of editing');
   assert.equal(await page.evaluate(()=>window.pickerBefore===document.querySelector('#flexLogDevice')),true);
   assert.equal(await page.evaluate(()=>document.activeElement.id),'flexLogDevice');
-  assert.match(await page.locator('#dynamicEnergy .timer').first().textContent(),/00:00:0[1-9]/);
+  assert.notEqual(await oven.locator('.timer').textContent(),'00:00:00');
   for(const [key,value] of Object.entries({Family:'Rusche',Device:'dev-rusche-machine',Date:'2026-11-20',Start:'23:30',End:'00:15',Watts:'1250',PowerPrice:'0.31'})){
     assert.equal(await page.locator('#flexLog'+key).inputValue(),value);
   }
