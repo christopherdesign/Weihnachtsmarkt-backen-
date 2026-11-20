@@ -70,7 +70,11 @@ let deferredRenderTimer=null;
          for(const id of ['newName','newCost','receiptPhoto'])if($(id))$(id).value='';
        }
        if(engagedPage?.id==='settings')for(const id of ['newDeviceName','newDeviceWatts'])if($(id))$(id).value='';
-       if(engagedPage?.id==='sales')$('saleCustomDate').value='';
+       if(engagedPage?.id==='sales'){
+         $('saleCustomDate').value='';
+         const reservation=$('reserveCreate');
+         if(reservation){reservation.reset();reservation.elements.date.value=localToday()}
+       }
        if(engagedPage?.id==='plan')$('productionDate').value='';
        pending=true;
      }
@@ -189,11 +193,14 @@ $('savePurchase').onclick=async()=>{
  const selected=s.shopping.filter(item=>item.done&&item.pendingPurchase&&Math.max(0,Math.round(n(item.qty)))>0);
  const status=$('purchaseSaveStatus');
  if(!selected.length){status.textContent='Bitte mindestens einen gekauften Artikel markieren.';alert('Bitte mindestens einen Artikel über das Häkchen als gekauft markieren.');return}
- const date=s.purchase.date||localToday(),createdAt=nowIso(),entryId=makeId('purchase');
+ // A background sync may have refreshed s.purchase while this form remained
+ // on screen. Attribute the purchase to the values the user actually sees.
+ const date=$('purchaseDate').value||localToday(),buyerKey=$('buyer').value,store=$('store').value.trim();
+ const createdAt=nowIso(),entryId=makeId('purchase');
  const items=selected.map(item=>({name:item.name,qty:Math.max(0,Math.round(n(item.qty))),unit:item.unit||'Stück',unitPrice:n(item.unitPrice),total:purchaseLineTotal(item)}));
- const entry={id:entryId,date,buyerKey:s.purchase.buyerKey,buyer:purchasePartyLabel({buyerKey:s.purchase.buyerKey}),store:s.purchase.store.trim(),items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt,updatedAt:createdAt};
+ const entry={id:entryId,date,buyerKey,buyer:purchasePartyLabel({buyerKey}),store,items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt,updatedAt:createdAt};
  s.purchaseEntries=s.purchaseEntries||[];s.purchaseEntries.push(entry);
- selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyerKey=s.purchase.buyerKey;item.buyer=purchasePartyLabel({buyerKey:s.purchase.buyerKey});item.store=s.purchase.store.trim()});
+ selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyerKey=buyerKey;item.buyer=entry.buyer;item.store=store});
  s.purchase.date=date;
  try{save()}catch(error){status.textContent='Einkauf konnte nicht lokal gespeichert werden. Entwurf und Bon-Foto bleiben erhalten.';return}
  pendingReceiptPhoto=null;$('receiptPhoto').value='';formRenderGuard.finish();render();
@@ -316,8 +323,7 @@ $('saveSale').onclick=()=>{
    hornQty:saleDraft.horn,hornPrice:n(s.salePrices.horn),
    mixedQty:saleDraft.mixed,mixedPrice:n(s.salePrices.mixed)
  });
- saleDraft={cookie:0,horn:0,mixed:0};
- save();$('saleCustomDate').value='';formRenderGuard.finish();render();
+ save();saleDraft={cookie:0,horn:0,mixed:0};$('saleCustomDate').value='';formRenderGuard.finish();render();
 };
 $('salesHistory').onclick=e=>{
  const id=e.target.dataset.saledel;if(!id)return;
