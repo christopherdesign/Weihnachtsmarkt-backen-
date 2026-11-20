@@ -22,9 +22,13 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   const receipts=[{id:'receipt',total:3,receiptPhoto:'synthetic-photo'}];
   const sales=[{id:'historic-sale',cookieQty:1,cookiePrice:9,mixedQty:0,hornQty:0}];
   const reservations=[{id:'existing-reservation',name:'Test',open:{cookie:0,horn:0,mixed:0},pickups:[],audit:[],revision:0}];
+  const started=Date.now()-900000;
   const energyConfig={prices:{Römer:0.25,Rusche:0.24},devices:[
     {id:'dev-roemer-oven',name:'NEFF Backofen',family:'Römer',type:'Backofen',watts:3000},
-    {id:'dev-rusche-machine',name:'Küchenmaschine Rusche',family:'Rusche',type:'Küchenmaschine',watts:1400}
+    {id:'dev-rusche-machine',name:'Küchenmaschine Rusche',family:'Rusche',type:'Küchenmaschine',watts:1400},
+    {id:'dev-roemer-iron',name:'Cloer Hörncheneisen',family:'Römer',type:'Hörncheneisen',watts:800},
+    {id:'dev-rusche-iron',name:'Cloer Hörncheneisen',family:'Rusche',type:'Hörncheneisen',watts:800,running:true,startAt:started},
+    {id:'legacy-rusche-iron',name:'Cloer Hörncheneisen – Rusche',family:'Rusche',type:'Hörncheneisen',watts:850,running:true,startAt:started}
   ]};
   let remote={updated_at:new Date(Date.now()-10000).toISOString(),data:{year:today,production:{cookie:3,horn:0,mixed:0},purchaseEntries:receipts,saleEntries:sales,reservations,energyConfig,energyLogs:[original]}};
   let reads=0,writes=0;
@@ -51,6 +55,9 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.goto(origin+'/');
   await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
   await page.locator('[data-page="energy"]').click();
+  assert.equal(await page.locator('[data-start="dev-roemer-iron"]').count(),1);
+  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),1);
+  assert.equal(await page.locator('[data-start="legacy-rusche-iron"], [data-qdev="legacy-rusche-iron"]').count(),0);
   const start=page.locator('[data-start="dev-roemer-oven"]');
   await start.click();
   const oven=page.locator('#dynamicEnergy .energy-device:has([data-start="dev-roemer-oven"])');
@@ -58,6 +65,7 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
   assert.equal(remote.data.energyConfig.devices.find(d=>d.id==='dev-roemer-oven').running,true);
   await page.locator('#flexLogFamily').selectOption('Rusche');
+  assert.equal(await page.locator('#flexLogDevice option[value="legacy-rusche-iron"]').count(),0);
   await page.locator('#flexLogDevice').selectOption('dev-rusche-machine');
   await page.locator('#flexLogDate').fill('2026-11-20');
   await page.locator('#flexLogStart').fill('23:30');
@@ -119,6 +127,17 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
     await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
     assert.ok(await control.evaluate(el=>window.pickerBefore===el&&document.activeElement===el),tab);
     assert.equal(await control.inputValue(),before,tab);
+  }
+  await page.locator('[data-page="energy"]').press('Enter');
+  await page.locator('[data-stop="dev-rusche-iron"]').press('Enter');
+  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),0);
+  await page.locator('[data-stop="legacy-rusche-iron"]:enabled').waitFor({state:'attached'});
+  await page.locator('[data-stop="legacy-rusche-iron"]').press('Enter');
+  await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
+  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),1);
+  for(const [id,watts] of [['dev-rusche-iron',800],['legacy-rusche-iron',850]]){
+    assert.equal(remote.data.energyConfig.devices.find(d=>d.id===id).running,false);
+    assert.equal(remote.data.energyLogs.filter(l=>l.deviceId===id&&l.watts===watts).length,1);
   }
   // Reservation UI is intentionally preview-only. Exercise the same guarded
   // repaint through a settings input event without connecting a cloud backend.
