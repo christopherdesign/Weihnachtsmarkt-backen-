@@ -44,10 +44,11 @@ function fillSaleDates(){
 }
 function stockTotals(){
  const sold=saleTotals();
+ const open=!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations?Reservations.openTotals(s):{cookie:0,horn:0,mixed:0};
  return {
-   cookie:n(s.production?.cookie)-sold.cookie,
-   horn:n(s.production?.horn)-sold.horn,
-   mixed:n(s.production?.mixed)-sold.mixed,
+   cookie:n(s.production?.cookie)-sold.cookie-open.cookie,
+   horn:n(s.production?.horn)-sold.horn-open.horn,
+   mixed:n(s.production?.mixed)-sold.mixed-open.mixed,
    sold
  };
 }
@@ -261,3 +262,4 @@ function renderCharts(){
 function render(){
  $('buyer').innerHTML=`<option value="family1">${esc(s.family1||'Familie 1')}</option><option value="family2">${esc(s.family2||'Familie 2')}</option><option value="neutral">Gemeinsam / Neutral</option>`;
  $('buyer').value=s.purchase.buyerKey||'family1';$('store').value=s.purchase.store
+

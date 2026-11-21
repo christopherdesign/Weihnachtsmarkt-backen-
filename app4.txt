@@ -12,3 +12,4 @@ compareYear=Number(s.year)-1;
 renderYearSelectors();
 render();
 initCloud();
+

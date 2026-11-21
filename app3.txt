@@ -43,7 +43,7 @@ let deferredRenderTimer=null;
 {
  let engagedPage=null,dirty=false,pending=false;
  const controls='input,select,textarea,[contenteditable],summary';
- const staged='.energy-manual,.energy-log-edit,.production-entry-edit,#newName,#newCost,#receiptPhoto,#saleCustomDate,#saleDateSelect,#productionDate,#newDeviceName,#newDeviceWatts,#newDeviceFamily,#newDeviceType';
+ const staged='.energy-manual,.energy-log-edit,.production-entry-edit,#reserveCreate,#reserveList form,#newName,#newCost,#receiptPhoto,#saleCustomDate,#saleDateSelect,#productionDate,#newDeviceName,#newDeviceWatts,#newDeviceFamily,#newDeviceType';
  function engage(e){
    const control=e.target.closest?.(controls);
    const page=control?.closest('.page.active');
@@ -72,6 +72,8 @@ let deferredRenderTimer=null;
        if(engagedPage?.id==='settings')for(const id of ['newDeviceName','newDeviceWatts'])if($(id))$(id).value='';
        if(engagedPage?.id==='sales'){
          $('saleCustomDate').value='';
+         const reservation=$('reserveCreate');
+         if(reservation){reservation.reset();reservation.elements.date.value=localToday()}
        }
        if(engagedPage?.id==='plan')$('productionDate').value='';
        pending=true;
@@ -289,15 +291,16 @@ $('productionHistory').onclick=e=>{
  const id=saveId||deleteId,entry=(s.productionEntries||[]).find(x=>x.id===id),editor=e.target.closest('.production-entry-edit');
  if(!entry||editor?.dataset.recordVersion!==(entry._updatedAt||''))return alert('Der Produktionseintrag wurde auf einem anderen Gerät geändert. Bitte den Entwurf prüfen und die Seite neu öffnen.');
  const old=productionEntryValues(entry),sold=stockTotals().sold;
- const wouldUndercut=totals=>['cookie','horn','mixed'].some(k=>totals[k]<sold[k]);
+ const reserved=!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations?Reservations.openTotals(s):{cookie:0,horn:0,mixed:0};
+ const wouldUndercut=totals=>['cookie','horn','mixed'].some(k=>totals[k]<sold[k]+reserved[k]);
  if(saveId){
    const form=e.target.closest('.production-entry-edit'),field=name=>form?.querySelector('[data-production-field="'+name+'"]'),next=productionEntryValues({cookieQty:field('cookie')?.value,hornQty:field('horn')?.value,mixedQty:field('mixed')?.value});
    const totals={cookie:n(s.production.cookie)-old.cookie+next.cookie,horn:n(s.production.horn)-old.horn+next.horn,mixed:n(s.production.mixed)-old.mixed+next.mixed};
-   if(wouldUndercut(totals))return alert('Die Änderung würde den Bestand unter die bereits verkaufte Menge setzen.');
+   if(wouldUndercut(totals))return alert('Die Änderung würde den Bestand unter die bereits verkaufte und reservierte Menge setzen.');
    s.production={cookie:Math.round(totals.cookie),horn:Math.round(totals.horn),mixed:Math.round(totals.mixed)};entry.date=field('date')?.value||'';entry.cookieQty=next.cookie;entry.hornQty=next.horn;entry.mixedQty=next.mixed;save();formRenderGuard.finish();render();return;
  }
  const totals={cookie:n(s.production.cookie)-old.cookie,horn:n(s.production.horn)-old.horn,mixed:n(s.production.mixed)-old.mixed};
- if(wouldUndercut(totals))return alert('Dieser Eintrag kann nicht gelöscht werden, weil Eimer bereits verkauft sind.');
+ if(wouldUndercut(totals))return alert('Dieser Eintrag kann nicht gelöscht werden, weil Eimer bereits verkauft oder reserviert sind.');
  if(confirm('Diesen Produktionseintrag wirklich löschen?')){s.production={cookie:Math.round(totals.cookie),horn:Math.round(totals.horn),mixed:Math.round(totals.mixed)};s.productionEntries=s.productionEntries.filter(x=>x.id!==id);save();render()}
 };
 
@@ -324,6 +327,7 @@ $('saveSale').onclick=()=>{
 };
 $('salesHistory').onclick=e=>{
  const id=e.target.dataset.saledel;if(!id)return;
+ if(s.saleEntries.some(x=>x.id===id&&x.reservationId))return alert('Bitte die Abholung in der Reservierung korrigieren.');
  if(confirm('Diesen Verkaufseintrag löschen?')){s.saleEntries=s.saleEntries.filter(x=>x.id!==id);save();render()}
 };
 
@@ -368,3 +372,4 @@ if($('joinSyncLink'))$('joinSyncLink').onclick=async()=>{
  }catch(e){alert('Der Freigabelink ist ungültig. Bitte den vollständigen Link aus der bisherigen Web-App kopieren.')}
 };
 $('resetAll').onclick=()=>{if(confirm('Daten des Jahres '+s.year+' wirklich löschen? Andere Jahre bleiben erhalten.')){const y=s.year;s=freshYear(y);save();render()}};
+

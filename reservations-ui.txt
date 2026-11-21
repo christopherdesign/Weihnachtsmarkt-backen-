@@ -1,0 +1,125 @@
+{
+ const conflicts=document.createElement('div');
+ conflicts.className='card';
+ conflicts.hidden=true;
+ conflicts.innerHTML='<h2>Synchronisierung: Klärung erforderlich</h2><div id="syncConflictRecords"></div>';
+ document.querySelector('#settings .grid').append(conflicts);
+ globalThis.refreshSyncConflicts=()=>{
+   const list=$('syncConflictRecords');
+   list.replaceChildren();
+   for(const year of pendingYears()){
+     const record=readYearRecord(year), conflict=record.conflict;
+     if(!conflict)continue;
+     const title=document.createElement('h3');title.textContent=String(year);list.append(title);
+     const hint=document.createElement('p');
+     hint.textContent=[conflict.cause,stockConflictHelp[conflict.code],'Die lokalen Änderungen dieses Jahres bleiben gespeichert; die Übertragung pausiert.'].filter(Boolean).join(' ');
+     list.append(hint);
+     for(const id of conflict.ids){
+       const info=record.details?.[id],p=document.createElement('p');
+       const actions={create:'Reservierung angelegt',edit:'Reservierung bearbeitet',change:'Menge geändert',pickup:'Abholung gebucht',cancel:'Reservierung storniert',reverse:'Abholung korrigiert'};
+       p.textContent=[info?.at&&new Date(info.at).toLocaleString('de-DE'),
+         info?.operation&&actions[info.operation.type],info?.customer,
+         ...(info?.targets||[]).map(t=>t.label+' '+t.id),id].filter(Boolean).join(' · ');
+       list.append(p);
+     }
+     const retry=document.createElement('button');retry.type='button';retry.className='secondary';
+     retry.textContent='Nach Prüfung erneut versuchen';
+     retry.disabled=!IS_PRODUCTION_DEPLOYMENT||!navigator.onLine;
+     retry.onclick=()=>{requestedSyncRetries.add(year);initCloud(true)};
+     list.append(retry);
+   }
+   conflicts.hidden=!list.childElementCount;
+ };
+ globalThis.refreshSyncConflicts();
+}
+
+// Deliberately preview-only until server-side stock invariants and the release gate are verified.
+if(!IS_PRODUCTION_DEPLOYMENT&&globalThis.Reservations){
+ const card=document.createElement('div');
+ card.className='card';
+ card.innerHTML='<h2>Reservierungen und Teilabholungen</h2><p class="note">Vorschau: Testdaten bleiben auf diesem Gerät.</p><form id="reserveCreate"></form><div id="reserveList"></div><p id="reserveMessage" role="status"></p>';
+ document.querySelector('#sales .grid').append(card);
+ const captions={cookie:'Kekse',horn:'Hörnchen',mixed:'½/½'};
+ const fields=(q={},max={})=>'<div class="row">'+Reservations.products.map(k=>'<label class="c4 sm12">'+captions[k]+'<input type="number" min="0" step="1" name="'+k+'" value="'+(q[k]||0)+'" '+(max[k]===undefined?'':'max="'+max[k]+'"')+' required></label>').join('')+'</div>';
+ const quantities=form=>Object.fromEntries(Reservations.products.map(k=>[k,Number(form.elements[k].value)]));
+ const message=t=>{$('reserveMessage').textContent=t};
+ function run(cmd){
+   try{
+     const operation={id:makeId('reservation-op'),at:nowIso(),...cmd};
+     const next=Reservations.apply(s,operation);
+     s=next;save(operation);
+   }catch(error){message(error.message);return false}
+   formRenderGuard.finish();render();message('Vorgang lokal gespeichert.');
+   return true;
+ }
+ $('reserveCreate').innerHTML='<div class="row"><label class="c4 sm12">Kundenname<input name="customer" maxlength="120" required></label><label class="c4 sm12">Datum<input type="date" name="date" required></label><label class="c4 sm12">Abholtermin (optional)<input name="pickup" type="date"></label></div><label>Bemerkung (optional)<input name="note" maxlength="300"></label>'+fields()+'<button type="submit" class="primary">Reservierung anlegen</button>';
+ $('reserveCreate').elements.date.value=localToday();
+ $('reserveCreate').onsubmit=event=>{
+   event.preventDefault();
+   const form=event.currentTarget,f=form.elements;
+   if(run({type:'create',reservationId:makeId('reservation'),name:f.customer.value,date:f.date.value,pickupDate:f.pickup.value,note:f.note.value,quantities:quantities(form)})){
+     form.reset();f.date.value=localToday();
+   }
+ };
+ function renderReservations(){
+   const list=$('reserveList');
+   list.innerHTML='';
+   for(const record of s.reservations||[]){
+     const item=document.createElement('article');
+     item.className='card';
+     const open=Reservations.products.map(k=>captions[k]+': '+record.open[k]).join(' · ');
+     item.innerHTML='<h3>'+esc(record.name)+' · '+esc(Reservations.status(record))+'</h3><div class="muted">'+esc(record.date)+(record.pickupDate?' · Abholung: '+esc(record.pickupDate):'')+'</div><p>'+esc(record.note)+'</p><p>Offen: '+esc(open)+'</p>';
+     const submit=(type,cmd)=>run({type,reservationId:record.id,revision:record.revision,...cmd});
+     if(Reservations.products.some(k=>record.open[k]>0)){
+       const form=document.createElement('form');
+       form.innerHTML=fields({},record.open)+'<div class="actions"><button class="primary" value="pickup">Abholung buchen</button><button class="secondary" value="cancel">Mengen stornieren</button></div>';
+       form.onsubmit=event=>{
+         event.preventDefault();
+         const type=event.submitter.value;
+         if(type==='cancel'&&!confirm('Ausgewählte Restmengen stornieren?'))return;
+         submit(type,{quantities:quantities(form),date:localToday(),priceCents:Object.fromEntries(Reservations.products.map(k=>[k,Math.round(n(s.salePrices[k])*100)]))});
+       };
+       item.append(form);
+       const cancel=document.createElement('button');
+       cancel.type='button';cancel.className='secondary';cancel.textContent='Alle offenen Mengen stornieren';
+       cancel.onclick=()=>{if(confirm('Alle offenen Mengen stornieren? Bereits abgeholte Mengen bleiben verkauft.'))submit('cancel',{quantities:record.open})};
+       item.append(cancel);
+     }
+     const details=document.createElement('details');
+     details.innerHTML='<summary>Reservierung bearbeiten</summary>';
+     const edit=document.createElement('form');
+     const sold=Reservations.fulfilled(record);
+     edit.innerHTML='<div class="row"><label class="c4 sm12">Kundenname<input name="customer" maxlength="120" required value="'+esc(record.name)+'"></label><label class="c4 sm12">Reservierungsdatum<input name="date" type="date" required value="'+esc(record.date)+'"></label><label class="c4 sm12">Geplanter Abholtermin<input name="pickup" type="date" value="'+esc(record.pickupDate||'')+'"></label></div><label>Bemerkungen<input name="note" maxlength="300" value="'+esc(record.note||'')+'"></label><p class="muted">Gesamtmengen (abgeholt + offen). Bereits abgeholt: '+Reservations.products.map(k=>captions[k]+': '+sold[k]).join(' · ')+'</p>'+fields(Reservations.reservedTotal(record))+'<button class="secondary">Reservierung speichern</button>';
+     edit.onsubmit=event=>{
+       event.preventDefault();
+       const f=edit.elements;
+       submit('edit',{name:f.customer.value,date:f.date.value,pickupDate:f.pickup.value,note:f.note.value,quantities:quantities(edit)});
+     };
+     details.append(edit); item.append(details);
+     for(const pickup of record.pickups){
+       const line=document.createElement('p');
+       line.textContent=new Date(pickup.at).toLocaleString('de-DE')+' · '+Reservations.products.map(k=>captions[k]+': '+pickup.quantities[k]+' × '+eur(pickup.priceCents[k]/100)).join(' · ')+(pickup.voidedAt?' · korrigiert: '+pickup.voidReason:'');
+       item.append(line);
+       if(!pickup.voidedAt){
+         const button=document.createElement('button');button.className='secondary';button.textContent='Abholung korrigieren';
+         button.onclick=()=>{const reason=prompt('Korrekturgrund:');if(reason?.trim())submit('reverse',{pickupId:pickup.id,reason})};
+         item.append(button);
+       }
+     }
+     const audit=document.createElement('details');
+     const summary=document.createElement('summary');summary.textContent='Verlauf ('+record.audit.length+')';audit.append(summary);
+     const actions={create:'Angelegt',change:'Restmenge geändert',edit:'Bearbeitet',pickup:'Abgeholt',cancel:'Storniert',reverse:'Abholung korrigiert'};
+     for(const e of record.audit){
+       const row=document.createElement('p');
+       row.textContent=[new Date(e.at).toLocaleString('de-DE'),actions[e.type]||e.type,e.name,e.date,e.pickupDate,e.note,
+         e.quantities&&Reservations.products.map(k=>captions[k]+': '+e.quantities[k]).join(' · '),e.reason].filter(Boolean).join(' — ');
+       audit.append(row);
+     }
+     item.append(audit);
+     list.append(item);
+   }
+ }
+ const renderBeforeReservations=render;
+ render=function(){renderBeforeReservations();renderReservations()};
+ renderReservations();
+}
