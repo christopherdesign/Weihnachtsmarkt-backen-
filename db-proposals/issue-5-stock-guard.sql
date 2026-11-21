@@ -1,5 +1,5 @@
--- Install only after the release checks pass. Replace __WM_WORKSPACE_UUID__ with
--- the verified workspace UUID; an unrendered template fails its UUID cast.
+-- Install only after the release checks pass. Bind the workspace placeholder
+-- in the trigger predicate; an unrendered template fails its UUID cast.
 begin;
 
 create schema if not exists wm_internal;
