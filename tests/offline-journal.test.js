@@ -126,3 +126,39 @@ test('four isolated journals merge; two clean polls fetch metadata only; histori
   await devices[0](`syncYear(${year})`);
   assert.deepEqual(log,[['GET','updated_at'],['GET','updated_at']]);
 });
+
+test('four offline device snapshots converge to the configured Cloer without touching history',async()=>{
+  const actual={id:'device-218873e0-fb8b-428f-8989-edc625da705a',name:'Cloer',type:'Hörncheneisen',family:'Rusche',watts:800,ironCount:5};
+  const auto={...actual,id:'dev-rusche-iron',name:'Cloer Hörncheneisen',ironCount:1};
+  const separate={...actual,id:'unverified-same-name',ironCount:2};
+  const sensitiveFields={id:'old-energy',deviceId:actual.id,watts:4000,powerPrice:.25,cost:.5,durationMs:1800000,family:'Rusche'};
+  const fixture={...backup,energyLogs:[sensitiveFields],energyConfig:{prices:{Rusche:.25},devices:[actual,separate]}};
+  let remote={data:structuredClone(fixture),updated_at:'2026-11-18T20:59:59.114Z'};
+  const file=readFileSync(join(__dirname,'../app5.txt'),'utf8');
+  const selectors=file.slice(file.indexOf(' const ruscheCloerDefaultId'),file.indexOf(' let manualDevices'));
+  assert.ok(selectors.includes('function visibleEnergyDevices'));
+  const net=async(url,{method='GET',body}={})=>{
+    const q=new URL(url).searchParams;
+    let rows=[];
+    if(method==='GET')rows=[q.get('select')==='updated_at'?{updated_at:remote.updated_at}:structuredClone(remote)];
+    if(method==='PATCH'&&q.get('updated_at')==='eq.'+remote.updated_at){remote=JSON.parse(body);rows=[{updated_at:remote.updated_at}]}
+    return {ok:true,text:async()=>JSON.stringify(rows)};
+  };
+  const mem=[ [actual,separate], [actual,auto,separate], [auto,separate], [actual,separate] ].map(devices=>new Map([
+    ['wm_backen_active_year',String(year)],['wm_backen_year_'+year,JSON.stringify({...fixture,energyConfig:{...fixture.energyConfig,devices}})]
+  ]));
+  const loadPhone=state=>{const p=phone(state,net);p(selectors+"\nARRAY_KEYS.push('energyConfig.devices');");return p};
+  const visible=p=>JSON.parse(p("JSON.stringify(visibleEnergyDevices(s.energyConfig.devices).map(d=>[d.id,d.ironCount]))"));
+  const expected=[[actual.id,5],[separate.id,2]].sort();
+  assert.deepEqual(visible(loadPhone(mem[1])).sort(),expected,'old duplicate is already hidden offline');
+  mem.forEach((m,i)=>add(loadPhone(m),'offline-cloer-'+i));
+  const clients=mem.map(loadPhone);
+  for(const p of clients)await p(`syncYear(${year})`);
+  for(const p of clients)await p(`syncYear(${year})`);
+  for(const p of clients)assert.deepEqual(visible(p).sort(),expected);
+  const historical=remote.data.energyLogs.find(x=>x.id===sensitiveFields.id);
+  for(const [k,value] of Object.entries(sensitiveFields))assert.equal(historical[k],value,k);
+  assert.equal(remote.data.energyLogs.length,1);
+  assert.equal(remote.data.purchaseEntries.length,backup.purchaseEntries.length+4);
+  assert.ok(remote.data.energyConfig.devices.some(d=>d.id===auto.id),'stale default can remain in raw data but cannot reappear in the UI');
+});

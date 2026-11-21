@@ -21,24 +21,24 @@
  if(!SYNC_PATHS.includes('energyConfig.prices'))SYNC_PATHS.push('energyConfig.prices');
  if(!ARRAY_KEYS.includes('energyConfig.devices'))ARRAY_KEYS.push('energyConfig.devices');
  function cfg(){s.energyConfig=s.energyConfig||{prices:{},devices:[]};s.energyConfig.prices=s.energyConfig.prices||{};s.energyConfig.devices=s.energyConfig.devices||[];return s.energyConfig}
- const ruscheCloerId='dev-rusche-iron';
+ const ruscheCloerDefaultId='dev-rusche-iron';
+ const ruscheCloerActualId='device-218873e0-fb8b-428f-8989-edc625da705a';
  function isRuscheCloer(d){
-   if(d.family!==s.family2||d.type!=='Hörncheneisen')return false;
-   const name=String(d.name||'').normalize('NFC').trim().replace(/\s+/g,' ').toLowerCase();
-   return d.id===ruscheCloerId||/^cloer hörncheneisen(?:\s*(?:[-–·]\s*)?rusche)?$/.test(name);
+   return d.family===s.family2&&d.type==='Hörncheneisen'&&
+     (d.id===ruscheCloerActualId||d.id===ruscheCloerDefaultId);
  }
- function visibleEnergyDevices(devices){
-   // View only: keep legacy IDs, settings and historical references intact.
-   // Surface an already running legacy timer before an idle standard device.
+ // Only this verified default/custom pair denotes the same physical device.
+ // Do not guess by name or modify persisted IDs, configuration or history.
+ function visibleEnergyDevices(devices,withRunningTimer=true){
    const group=devices.filter(isRuscheCloer);
-   const preferred=group.find(d=>d.running&&d.id===ruscheCloerId)||group.find(d=>d.running)||group.find(d=>d.id===ruscheCloerId)||group[0];
+   const actual=group.find(d=>d.id===ruscheCloerActualId);
+   const preferred=(withRunningTimer&&(actual?.running?actual:group.find(d=>d.running)))||actual||group[0];
    return devices.filter(d=>!isRuscheCloer(d)||d===preferred);
  }
  let manualDevices=[];
  let resetDraft=false;
  globalThis.resetManualEnergyDraft=()=>{resetDraft=true};
  const initialCfg=cfg();
- if(!initialCfg.devices.some(d=>d.id===ruscheCloerId||isRuscheCloer(d)))initialCfg.devices.push({id:ruscheCloerId,family:s.family2,type:'Hörncheneisen',name:'Cloer Hörncheneisen',watts:800,ironCount:1,running:false,startAt:null});
  if(!initialCfg.devices.some(d=>d.id==='dev-roemer-stove-1400'))initialCfg.devices.push({id:'dev-roemer-stove-1400',family:s.family1,type:'Herd',name:'Herd 1.400 W',watts:1400,running:false,startAt:null});
  function famPrice(f){return n(cfg().prices[f])||n(s.powerPrice)||.25}
  function icon(t){return t==='Backofen'?'🔥':t==='Hörncheneisen'?'🧇':t==='Küchenmaschine'?'🥣':t==='Herd'?'🍳':'⚡'}
@@ -115,7 +115,7 @@
          save();formRenderGuard.finish();resetDraft=true;render();return;
        }
        const id=e.target.dataset.start||e.target.dataset.stop||e.target.dataset.reset;if(!id)return;const d=cfg().devices.find(x=>x.id===id);if(!d)return;
-       if(e.target.dataset.start){if(!d.running){d.running=true;d.startAt=Date.now();d.runIronCount=d.type==='Hörncheneisen'?ironCount(d):undefined;d.runWatts=effectiveWatts(d,d.runIronCount);d.runPowerPrice=famPrice(d.family);d.runFamily=d.family;d.runDeviceName=d.name;d.runDeviceType=d.type}}
+       if(e.target.dataset.start){if(!visibleEnergyDevices(cfg().devices).includes(d))return render();if(!d.running){d.running=true;d.startAt=Date.now();d.runIronCount=d.type==='Hörncheneisen'?ironCount(d):undefined;d.runWatts=effectiveWatts(d,d.runIronCount);d.runPowerPrice=famPrice(d.family);d.runFamily=d.family;d.runDeviceName=d.name;d.runDeviceType=d.type}}
        else if(e.target.dataset.stop){if(d.running){const end=Date.now(),start=d.startAt||end,minutes=Math.max(0,end-start)/60000,count=d.type==='Hörncheneisen'?runCount(d):undefined,log=makeEnergyLog(d,{family:d.runFamily||d.family,date:localDateTime(start).date,start:localDateTime(start).time,end:localDateTime(end).time,minutes,count,watts:runWatts(d),price:runPrice(d)});log.deviceName=d.runDeviceName||d.name;log.deviceType=d.runDeviceType||d.type;s.energyLogs.push(log);clearRun(d)}}
        else if(e.target.dataset.reset&&confirm('Laufzeit ohne Protokolleintrag zurücksetzen?'))clearRun(d)
        save();render()
@@ -129,16 +129,17 @@
    ensureUi();
    const c=cfg();
    const visibleDevices=visibleEnergyDevices(c.devices);
+   const configuredDevices=visibleEnergyDevices(c.devices,false);
    const extraRunningCloer=c.devices.filter(d=>isRuscheCloer(d)&&d.running).length>1;
    c.devices.forEach(d=>{if(d.type==='Hörncheneisen')d.ironCount=ironCount(d)});
    if(!Object.hasOwn(c.prices,s.family1))c.prices[s.family1]=n(s.powerPrice)||.25;
    if(!Object.hasOwn(c.prices,s.family2))c.prices[s.family2]=n(s.powerPrice)||.25;
    $('familyPowerPrices').innerHTML='<div class="row">'+[s.family1,s.family2].map(f=>'<div class="c6 sm12"><label>Strompreis '+esc(f)+' (€/kWh)</label><input type="number" step=".001" min="0" data-pricefam="'+esc(f)+'" value="'+famPrice(f)+'"></div>').join('')+'</div>';
    $('newDeviceFamily').innerHTML=[s.family1,s.family2].map(f=>'<option>'+esc(f)+'</option>').join('');
-   $('deviceAdminList').innerHTML=c.devices.length?c.devices.map(d=>'<div class="shopitem"><div class="row"><div class="c3 sm12"><label>Familie</label><select data-devid="'+d.id+'" data-field="family">'+[s.family1,s.family2].map(f=>'<option '+(d.family===f?'selected':'')+'>'+esc(f)+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerätetyp</label><select data-devid="'+d.id+'" data-field="type">'+['Backofen','Hörncheneisen','Küchenmaschine','Herd','Sonstiges'].map(t=>'<option '+(d.type===t?'selected':'')+'>'+t+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerätename</label><input data-devid="'+d.id+'" data-field="name" value="'+esc(d.name)+'"></div><div class="c2 sm12"><label>Watt</label><input type="number" min="1" data-devid="'+d.id+'" data-field="watts" value="'+n(d.watts)+'"></div><div class="c1 sm12"><label>&nbsp;</label><button class="danger compact" data-deldev="'+d.id+'">×</button></div></div></div>').join(''):'<div class="muted">Noch keine Geräte hinterlegt.</div>';
+   $('deviceAdminList').innerHTML=configuredDevices.length?configuredDevices.map(d=>'<div class="shopitem"><div class="row"><div class="c3 sm12"><label>Familie</label><select data-devid="'+d.id+'" data-field="family">'+[s.family1,s.family2].map(f=>'<option '+(d.family===f?'selected':'')+'>'+esc(f)+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerätetyp</label><select data-devid="'+d.id+'" data-field="type">'+['Backofen','Hörncheneisen','Küchenmaschine','Herd','Sonstiges'].map(t=>'<option '+(d.type===t?'selected':'')+'>'+t+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerätename</label><input data-devid="'+d.id+'" data-field="name" value="'+esc(d.name)+'"></div><div class="c2 sm12"><label>Watt</label><input type="number" min="1" data-devid="'+d.id+'" data-field="watts" value="'+n(d.watts)+'"></div><div class="c1 sm12"><label>&nbsp;</label><button class="danger compact" data-deldev="'+d.id+'">×</button></div></div></div>').join(''):'<div class="muted">Noch keine Geräte hinterlegt.</div>';
    let previousLog=!resetDraft&&$('flexLogDevice')?{family:$('flexLogFamily').value,device:$('flexLogDevice').value,date:$('flexLogDate').value,start:$('flexLogStart').value,end:$('flexLogEnd').value,count:$('flexLogIronCount').value,watts:$('flexLogWatts').value,price:$('flexLogPowerPrice').value}:null;
    resetDraft=false;
-   manualDevices=visibleDevices.map(d=>({...d}));
+   manualDevices=configuredDevices.map(d=>({...d}));
    const countOptions=value=>Array.from({length:12},(_,i)=>'<option value="'+(i+1)+'" '+(i+1===value?'selected':'')+'>'+(i+1)+' Eisen</option>').join('');
    const deviceCards=visibleDevices.map(d=>'<div class="quarter card energy-device"><h2>'+icon(d.type)+' '+esc(d.name)+'</h2><div class="muted">'+esc(d.family)+' · '+esc(d.type)+'</div>'+(d.type==='Hörncheneisen'?'<div class="energy-iron-count"><label>Anzahl Eisen</label><select data-ironcount="'+d.id+'" '+(d.running?'disabled':'')+'>'+countOptions(ironCount(d))+'</select></div>':'')+'<div><strong>'+runWatts(d).toLocaleString('de-DE')+' W</strong>'+(d.type==='Hörncheneisen'?' Gesamtleistung · '+n(d.watts).toLocaleString('de-DE')+' W je Eisen':'')+' · '+runPrice(d).toLocaleString('de-DE',{minimumFractionDigits:3})+' €/kWh</div><div class="timerbox"><div class="muted">Laufzeit</div><div class="timer">'+fmt(devElapsed(d))+'</div><div class="actions"><button class="primary" data-start="'+d.id+'" '+(d.running?'disabled':'')+'>Start</button><button class="secondary" data-stop="'+d.id+'" '+(!d.running?'disabled':'')+'>Stopp</button><button class="danger" data-reset="'+d.id+'">Reset</button></div></div><div class="sep"></div><div>'+(runWatts(d)/1000*(devElapsed(d)/3600000)).toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh</div><div class="big money">'+eur(devCost(d))+'</div></div>').join('');
    const manualCard='<div class="card energy-manual"><div class="section-title"><h2>➕ Energie nachtragen</h2><span class="pill">historisch fest gespeichert</span></div><div class="muted">Familie, Gerät, tatsächliche Wattzahl und Strompreis werden dauerhaft mit dem Vorgang gespeichert. Laufzeiten über Mitternacht werden automatisch erkannt.</div><div class="row" style="margin-top:10px"><div class="c3 sm12"><label>Familie</label><select id="flexLogFamily">'+[s.family1,s.family2].map(f=>'<option value="'+esc(f)+'">'+esc(f)+'</option>').join('')+'</select></div><div class="c3 sm12"><label>Gerät</label><select id="flexLogDevice"></select></div><div class="c3 sm6"><label>Datum</label><input id="flexLogDate" type="date"></div><div class="c3 sm6" id="flexLogIronCountWrap"><label>Anzahl Eisen</label><select id="flexLogIronCount">'+countOptions(1)+'</select></div><div class="c3 sm6"><label>Startzeit</label><input id="flexLogStart" type="time"></div><div class="c3 sm6"><label>Endzeit</label><input id="flexLogEnd" type="time"></div><div class="c3 sm6"><label>Tatsächliche Leistung (W)</label><input id="flexLogWatts" type="number" min="1" step="1"></div><div class="c3 sm6"><label>Strompreis (€/kWh)</label><input id="flexLogPowerPrice" type="number" min="0" step=".001"></div><div class="c12"><div class="note" id="flexLogCalc">Laufzeit, kWh und Kosten werden nach Eingabe berechnet.</div></div><div class="c12"><button class="primary" id="addFlexibleEnergyLog">+ Energiezeit eintragen</button></div></div></div>';
@@ -174,7 +175,7 @@
    $('flexEnergyLog').querySelectorAll('.energy-log-edit').forEach((form,i)=>{form.dataset.recordVersion=logs[i]._updatedAt||logs[i].updatedAt||''});
    const by=energyByFamily();$('energyFamilySummaryBody').innerHTML=[s.family1,s.family2].map(f=>'<div class="compare"><div class="l">'+esc(f)+'</div><div class="v money">'+eur(by[f])+'</div><div class="muted">Stromkosten</div></div>').join('');
    const qs=document.querySelector('#home .quickstart');if(qs)qs.innerHTML=visibleDevices.map(d=>'<button class="primary quickbtn" data-qdev="'+d.id+'">'+icon(d.type)+' '+esc(d.name)+'<small>'+esc(d.family)+' · '+(d.running?'läuft '+fmt(devElapsed(d)):effectiveWatts(d).toLocaleString('de-DE')+' W')+'</small></button>').join('');
-   qs?.querySelectorAll('[data-qdev]').forEach(b=>b.onclick=()=>{const d=c.devices.find(x=>x.id===b.dataset.qdev);if(d&&!d.running){d.running=true;d.startAt=Date.now();d.runIronCount=d.type==='Hörncheneisen'?ironCount(d):undefined;d.runWatts=effectiveWatts(d,d.runIronCount);d.runPowerPrice=famPrice(d.family);d.runFamily=d.family;d.runDeviceName=d.name;d.runDeviceType=d.type;save()}openPage(document.querySelector('[data-page="energy"]'));render()});
+   qs?.querySelectorAll('[data-qdev]').forEach(b=>b.onclick=()=>{const devices=cfg().devices;const d=visibleEnergyDevices(devices).find(x=>x.id===b.dataset.qdev);if(d&&!d.running){d.running=true;d.startAt=Date.now();d.runIronCount=d.type==='Hörncheneisen'?ironCount(d):undefined;d.runWatts=effectiveWatts(d,d.runIronCount);d.runPowerPrice=famPrice(d.family);d.runFamily=d.family;d.runDeviceName=d.name;d.runDeviceType=d.type;save()}openPage(document.querySelector('[data-page="energy"]'));render()});
  }
  render=function(){oldRender();renderFlexibleEnergy()};
  render();

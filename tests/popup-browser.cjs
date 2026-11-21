@@ -23,12 +23,14 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   const sales=[{id:'historic-sale',cookieQty:1,cookiePrice:9,mixedQty:0,hornQty:0}];
   const reservations=[{id:'existing-reservation',name:'Test',open:{cookie:0,horn:0,mixed:0},pickups:[],audit:[],revision:0}];
   const started=Date.now()-900000;
+  const actualCloer='device-218873e0-fb8b-428f-8989-edc625da705a';
   const energyConfig={prices:{Römer:0.25,Rusche:0.24},devices:[
     {id:'dev-roemer-oven',name:'NEFF Backofen',family:'Römer',type:'Backofen',watts:3000},
     {id:'dev-rusche-machine',name:'Küchenmaschine Rusche',family:'Rusche',type:'Küchenmaschine',watts:1400},
     {id:'dev-roemer-iron',name:'Cloer Hörncheneisen',family:'Römer',type:'Hörncheneisen',watts:800},
     {id:'dev-rusche-iron',name:'Cloer Hörncheneisen',family:'Rusche',type:'Hörncheneisen',watts:800,running:true,startAt:started},
-    {id:'legacy-rusche-iron',name:'Cloer Hörncheneisen – Rusche',family:'Rusche',type:'Hörncheneisen',watts:850,running:true,startAt:started}
+    {id:actualCloer,name:'Cloer',family:'Rusche',type:'Hörncheneisen',watts:800,ironCount:5,running:true,startAt:started},
+    {id:'independent-iron',name:'Cloer',family:'Rusche',type:'Hörncheneisen',watts:600,ironCount:1}
   ]};
   let remote={updated_at:new Date(Date.now()-10000).toISOString(),data:{year:today,production:{cookie:3,horn:0,mixed:0},purchaseEntries:receipts,saleEntries:sales,reservations,energyConfig,energyLogs:[original]}};
   let reads=0,writes=0;
@@ -56,8 +58,11 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
   await page.locator('[data-page="energy"]').click();
   assert.equal(await page.locator('[data-start="dev-roemer-iron"]').count(),1);
-  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),1);
-  assert.equal(await page.locator('[data-start="legacy-rusche-iron"], [data-qdev="legacy-rusche-iron"]').count(),0);
+  assert.equal(await page.locator('[data-start="'+actualCloer+'"]').count(),1);
+  assert.equal(await page.locator('[data-ironcount="'+actualCloer+'"]').inputValue(),'5');
+  assert.match(await page.locator('.energy-device:has([data-start="'+actualCloer+'"])').textContent(),/4\.000 W/);
+  assert.equal(await page.locator('[data-start="dev-rusche-iron"], [data-qdev="dev-rusche-iron"]').count(),0);
+  assert.equal(await page.locator('[data-start="independent-iron"]').count(),1);
   const start=page.locator('[data-start="dev-roemer-oven"]');
   await start.click();
   const oven=page.locator('#dynamicEnergy .energy-device:has([data-start="dev-roemer-oven"])');
@@ -65,7 +70,8 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
   assert.equal(remote.data.energyConfig.devices.find(d=>d.id==='dev-roemer-oven').running,true);
   await page.locator('#flexLogFamily').selectOption('Rusche');
-  assert.equal(await page.locator('#flexLogDevice option[value="legacy-rusche-iron"]').count(),0);
+  assert.equal(await page.locator('#flexLogDevice option[value="dev-rusche-iron"]').count(),0);
+  assert.equal(await page.locator('#flexLogDevice option[value="'+actualCloer+'"]').count(),1);
   await page.locator('#flexLogDevice').selectOption('dev-rusche-machine');
   await page.locator('#flexLogDate').fill('2026-11-20');
   await page.locator('#flexLogStart').fill('23:30');
@@ -129,19 +135,28 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
     assert.equal(await control.inputValue(),before,tab);
   }
   await page.locator('[data-page="energy"]').press('Enter');
+  await page.locator('[data-stop="'+actualCloer+'"]').press('Enter');
+  await page.locator('[data-stop="dev-rusche-iron"]:enabled').waitFor({state:'attached'});
   await page.locator('[data-stop="dev-rusche-iron"]').press('Enter');
-  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),0);
-  await page.locator('[data-stop="legacy-rusche-iron"]:enabled').waitFor({state:'attached'});
-  await page.locator('[data-stop="legacy-rusche-iron"]').press('Enter');
   await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
-  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),1);
-  for(const [id,watts] of [['dev-rusche-iron',800],['legacy-rusche-iron',850]]){
+  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),0);
+  assert.equal(await page.locator('[data-ironcount="'+actualCloer+'"]').inputValue(),'5');
+  for(const [id,watts] of [['dev-rusche-iron',800],[actualCloer,4000]]){
     assert.equal(remote.data.energyConfig.devices.find(d=>d.id===id).running,false);
     assert.equal(remote.data.energyLogs.filter(l=>l.deviceId===id&&l.watts===watts).length,1);
   }
+  assert.equal(await page.locator('#deviceAdminList [data-devid="dev-rusche-iron"]').count(),0);
   // Reservation UI is intentionally preview-only. Exercise the same guarded
   // repaint through a settings input event without connecting a cloud backend.
+  await context.addInitScript(({host,year,id})=>{
+    if(location.hostname!==host||localStorage.getItem('wm_backen_v2'))return;
+    localStorage.setItem('wm_backen_v2',JSON.stringify({year,energyConfig:{prices:{Rusche:.25},devices:[
+      {id,type:'Hörncheneisen',family:'Rusche',name:'Cloer',watts:800,ironCount:5}
+    ]}}));
+  },{host:new URL(preview).hostname,year:today,id:actualCloer});
   await page.goto(preview+'/');
+  await page.locator('[data-start="'+actualCloer+'"]').waitFor({state:'attached'});
+  assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),0,'initializing an existing device list does not seed a second Cloer');
   await page.locator('#reserveCreate').waitFor({state:'attached'});
   await page.locator('[data-page="plan"]').press('Enter');
   await page.locator('#madeCookiePlus').press('Enter');
