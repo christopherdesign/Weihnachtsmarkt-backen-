@@ -1,0 +1,23 @@
+name: Android web update 10.5.5
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  offline-update:
+    if: github.head_ref == 'codex/v10.5.5-ui-hotfix'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify OTA transition with local data and no cloud
+        run: |
+          set -eu
+          deps="$(mktemp -d)"
+          npm install --prefix "$deps" --no-save --ignore-scripts --no-audit --no-fund playwright-core@1.61.1
+          export NODE_PATH="$deps/node_modules"
+          node "$deps/node_modules/playwright-core/cli.js" install chromium --only-shell
+          node --test tests/release-1055.cjs

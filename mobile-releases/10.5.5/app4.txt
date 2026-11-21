@@ -1,0 +1,14 @@
+setInterval(()=>{
+ for(const kind of ['oven','iron','machine','stove']){
+   const device=s[kind];
+   if(!device.running)continue;
+   $(kind+'Timer').textContent=fmt(elapsed(device));
+   $(kind+'Kwh').textContent=kwh(device,kind).toLocaleString('de-DE',{minimumFractionDigits:3,maximumFractionDigits:3})+' kWh';
+   $(kind+'Cost').textContent=eur(powerCost(device,kind));
+ }
+},1000);
+
+compareYear=Number(s.year)-1;
+renderYearSelectors();
+render();
+initCloud();
