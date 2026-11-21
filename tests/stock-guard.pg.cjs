@@ -5,13 +5,13 @@ const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const {PGlite}=require('@electric-sql/pglite');
 const reservations=require('../reservations.js');
-const proposal=readFileSync(join(__dirname,'../db-proposals/issue-5-stock-guard.sql'),'utf8');
 const q=(cookie=0,horn=0,mixed=0)=>({cookie,horn,mixed});
 const start={production:q(1),saleEntries:[],reservations:[]};
 const op=(type,id,details={})=>({type,id,reservationId:'r1',at:'2026-11-19T12:00Z',...details});
 const hold=reservations.apply(start,op('create','c',{name:'Test',date:'2026-11-19',quantities:q(1)}));
 const sale={id:'direct',cookieQty:1,hornQty:0,mixedQty:0};
 const workspace='00000000-0000-4000-8000-000000000001';
+const proposal=readFileSync(join(__dirname,'../db-proposals/issue-5-stock-guard.sql'),'utf8').replace('__WM_WORKSPACE_UUID__',workspace);
 
 test('Stock trigger applies inside the row write without changing workspace permissions',async()=>{
  const db=new PGlite();
@@ -48,5 +48,8 @@ test('Stock trigger applies inside the row write without changing workspace perm
   await db.exec("set wm.test_workspace = '00000000-0000-4000-8000-000000000002'");
   assert.equal(await get(),undefined,'no expanded workspace visibility');
   assert.equal((await put(hold)).rows.length,0);
+  const unrelatedData={...start,saleEntries:[sale,sale]};
+  const unrelated=await db.query('insert into public.app_state(workspace_id,year,data) values($1,$2,$3) returning data',['00000000-0000-4000-8000-000000000002',2026,unrelatedData]);
+  assert.deepEqual(unrelated.rows[0].data,unrelatedData,'guard proposal leaves unrelated workspaces untouched');
  } finally {await db.close()}
 });

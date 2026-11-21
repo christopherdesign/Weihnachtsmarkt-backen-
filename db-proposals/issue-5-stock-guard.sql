@@ -1,4 +1,5 @@
--- Proposal only. Do not install on production before the Issue #5 approval.
+-- Install only after the release checks pass. Replace __WM_WORKSPACE_UUID__ with
+-- the verified workspace UUID; an unrendered template fails its UUID cast.
 begin;
 
 create schema if not exists wm_internal;
@@ -130,5 +131,6 @@ grant execute on function wm_internal.stock_quantity(jsonb) to anon, authenticat
 drop trigger if exists wm_guard_app_stock on public.app_state;
 create trigger wm_guard_app_stock
 before insert or update of data on public.app_state
-for each row execute function wm_internal.guard_app_stock();
+for each row when (new.workspace_id = '__WM_WORKSPACE_UUID__'::uuid)
+execute function wm_internal.guard_app_stock();
 commit;
