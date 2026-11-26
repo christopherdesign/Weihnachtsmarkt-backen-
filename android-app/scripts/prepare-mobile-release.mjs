@@ -11,7 +11,9 @@ if (!/^\d+\.\d+\.\d+$/.test(version || '')) {
 }
 
 const target = resolve(project, 'mobile-releases', version);
-const files = ['index.html', 'style.css', 'app1.txt', 'app2.txt', 'app3.txt', 'app4.txt', 'app5.txt'];
-await mkdir(target, { recursive: true });
+const files = ['index.html', 'style.css', 'app1.txt', 'app2.txt', 'app3.txt', 'app4.txt', 'app5.txt', 'startup-checkpoint.js', 'reservations.js', 'reservations-ui.txt'];
+await mkdir(dirname(target), { recursive: true });
+// Releases are immutable: never replace an existing version in place.
+await mkdir(target);
 await Promise.all(files.map(file => copyFile(resolve(project, file), resolve(target, file))));
 console.log(`Mobile-Release ${version} wurde unter ${target} vorbereitet.`);

@@ -1,0 +1,29 @@
+name: Issue 5 isolated PostgreSQL
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  stock:
+    if: github.event.pull_request.number == 6
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Run isolated tests (no Supabase connection)
+        run: |
+          set -eu
+          deps="$(mktemp -d)"
+          npm install --prefix "$deps" --no-save --ignore-scripts --no-audit --no-fund pg@8.16.3 @electric-sql/pglite@0.5.17 @embedded-postgres/linux-x64@17.12.0-beta.19 playwright-core@1.61.1
+          native="$deps/node_modules/@embedded-postgres/linux-x64"
+          node "$native/scripts/hydrate-symlinks.js"
+          export NODE_PATH="$deps/node_modules"
+          export WM_PG_BIN="$native/native/bin"
+          export LD_LIBRARY_PATH="$native/native/lib"
+          node --test tests/offline-journal.test.js tests/reservations.test.js tests/stock-guard.pg.cjs tests/stock-concurrency.pg.cjs
+          node "$deps/node_modules/playwright-core/cli.js" install chromium --only-shell
+          node android-app/scripts/prepare-mobile-release.mjs 10.5.6
+          node --test tests/popup-browser.cjs tests/ota-candidate.cjs
