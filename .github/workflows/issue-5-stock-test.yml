@@ -25,4 +25,5 @@ jobs:
           export LD_LIBRARY_PATH="$native/native/lib"
           node --test tests/offline-journal.test.js tests/reservations.test.js tests/stock-guard.pg.cjs tests/stock-concurrency.pg.cjs
           node "$deps/node_modules/playwright-core/cli.js" install chromium --only-shell
-          node --test tests/popup-browser.cjs
+          node android-app/scripts/prepare-mobile-release.mjs 10.5.6
+          node --test tests/popup-browser.cjs tests/ota-candidate.cjs
