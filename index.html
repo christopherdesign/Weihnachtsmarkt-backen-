@@ -9,7 +9,7 @@
 </head>
 <body data-update-pending>
 <style>body[data-update-pending] > :not(#updateSafetyStatus):not(style){display:none!important}#updateSafetyStatus{margin:24px auto;max-width:600px;padding:20px;background:#fff;color:#48232a;border-radius:14px}#updateSafetyStatus a{display:inline-block;margin-top:12px}#updateSafetyStatus [hidden],#updateSafetyStatus[hidden]{display:none!important}</style>
-<section id="updateSafetyStatus" role="status"><h1>Lokale Daten werden gesichert</h1><p id="updateSafetyMessage">Bitte die App kurz geöffnet lassen. Das Update startet erst nach bestätigter Sicherung.</p><a id="previousRelease" hidden>Weiter mit V10.5.5</a></section>
+<section id="updateSafetyStatus" role="status"><h1>Lokale Daten werden gesichert</h1><p id="updateSafetyMessage">Bitte die App kurz geöffnet lassen. Das Update startet erst nach bestätigter Sicherung.</p><a id="previousRelease" hidden>Weiter mit V10.5.5</a> <button id="recoverCheckpoint" type="button" hidden>Sicherung exportieren</button></section>
 <header><div class="wrap head">
  <div><h1>🎄 Weihnachtsmarkt Backen</h1><p>Produktion, Verkauf und Kosten auf einen Blick</p></div>
  <div class="sync"><span class="dot"></span><span id="syncLabel">Lokaler Modus</span></div>
@@ -77,6 +77,10 @@
  document.querySelector('#updateSafetyMessage').textContent='Das Update konnte nicht sicher gestartet werden. Die bisherige Version bleibt verfügbar. Bitte keine App-Daten löschen.';
  const fallback=document.querySelector('#previousRelease');
  fallback.href='/mobile-releases/10.5.5/index.html'+location.hash;fallback.hidden=false;
+ window.WMStartupCheckpoint?.exportCopy().then(()=>{
+   const recovery=document.querySelector('#recoverCheckpoint');recovery.hidden=false;
+   recovery.onclick=()=>window.WMStartupCheckpoint.downloadCopy().catch(()=>alert('Sicherung konnte nicht exportiert werden.'));
+ },()=>{});
  console.error(error);
 });
 </script>

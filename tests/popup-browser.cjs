@@ -222,7 +222,7 @@ test('update checkpoint preserves the old journals and blocks startup on storage
          }
          if(mode==='missing-origin')window.AndroidBridge={};
          if(mode==='blocked')indexedDB.open=()=>{throw new DOMException('Storage denied','SecurityError')};
-         if(mode==='quota')IDBObjectStore.prototype.put=()=>{throw new DOMException('Storage limit','QuotaExceededError')};
+         if(mode==='quota')IDBObjectStore.prototype.add=()=>{throw new DOMException('Storage limit','QuotaExceededError')};
        },{mode,oldPending,oldLegacy});
        await page.goto(preview+'/#existing-workspace');
        if(mode!=='success'){
@@ -241,6 +241,10 @@ test('update checkpoint preserves the old journals and blocks startup on storage
        await page.evaluate(()=>localStorage.setItem('wm_backen_v2',JSON.stringify({year:2026,production:{cookie:5}})));
        await page.reload();await page.locator('#updateSafetyStatus').waitFor({state:'hidden'});
        assert.equal((await page.evaluate(()=>window.WMStartupCheckpoint.exportCopy())).digest,data.digest,'ordinary restart does not overwrite original checkpoint');
+       await page.evaluate(()=>localStorage.removeItem('wm_update_activated_10.5.6'));
+       await page.reload();await page.locator('#previousRelease').waitFor();
+       assert.equal((await page.evaluate(()=>window.WMStartupCheckpoint.exportCopy())).digest,data.digest,'a lost marker must not erase the earlier backup');
+       await page.evaluate(digest=>localStorage.setItem('wm_update_activated_10.5.6',digest),data.digest);
        await page.evaluate(()=>new Promise((resolve,reject)=>{
          const req=indexedDB.open('wm-update-checkpoints-v1',1);
          req.onsuccess=()=>{const db=req.result,tx=db.transaction('snapshots','readwrite');

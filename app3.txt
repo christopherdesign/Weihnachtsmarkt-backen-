@@ -427,11 +427,7 @@ function exportDeviceSnapshot(){
 }
 $('exportDeviceBtn').onclick=exportDeviceSnapshot;
  $('syncNowBtn').onclick=()=>initCloud(true,true);
- $('exportCheckpointBtn').onclick=async()=>{try{
-   const data=await window.WMStartupCheckpoint.exportCopy(),filename='weihnachtsmarkt-sicherung-vor-10.5.6.json',json=JSON.stringify(data);
-   if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}
-   const link=document.createElement('a'),url=URL.createObjectURL(new Blob([json],{type:'application/json'}));link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
- }catch(_error){alert('Die Sicherung konnte nicht gelesen werden. Bitte keine App-Daten löschen.')}};
+ $('exportCheckpointBtn').onclick=()=>window.WMStartupCheckpoint.downloadCopy().catch(()=>alert('Die Sicherung konnte nicht gelesen werden. Bitte keine App-Daten löschen.'));
 $('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text());if(['wm-update-checkpoint-v1','wm-device-diagnostics-v1','wm-supabase-app-state-v1','wm-supabase-separate-workspaces-v1'].includes(parsed?.format)){alert('Dieser Geräteexport enthält mehrere Jahre und das Offline-Journal. Nicht als einzelnes Abrechnungsjahr importieren.');return}const payload=parsed?.backupFormat&&parsed?.data?parsed.data:parsed;const incoming=normalizeState(payload,s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
 $('copySyncLink').onclick=async()=>{
  const link=workspaceShareUrl(),hint=$('syncShareHint');

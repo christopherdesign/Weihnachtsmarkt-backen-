@@ -79,7 +79,11 @@
      }
      const entries=localEntries();checkLocal(entries);
      const raw=JSON.stringify(entries),record={version:VERSION,capturedAt:new Date().toISOString(),raw,digest:await checksum(raw)};
-     await transact(db,'readwrite',s=>s.put(record,VERSION));
+     const existing=await transact(db,'readonly',s=>s.get(VERSION));
+     if(existing){
+       await validate(existing);
+       if(existing.raw!==raw)throw new Error('An earlier checkpoint must not be overwritten');
+     }else await transact(db,'readwrite',s=>s.add(record,VERSION));
      const saved=await transact(db,'readonly',s=>s.get(VERSION));await validate(saved);
      if(saved.raw!==raw||saved.digest!==record.digest)throw new Error('Checkpoint differs from local state');
      return ()=>{
@@ -97,5 +101,11 @@
        storage:Object.fromEntries(entries)};
    }finally{db.close()}
  }
- window.WMStartupCheckpoint={prepare,exportCopy};
+ async function downloadCopy(){
+   const data=await exportCopy(),name='weihnachtsmarkt-sicherung-vor-'+VERSION+'.json',json=JSON.stringify(data);
+   if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(name,json);return}
+   const url=URL.createObjectURL(new Blob([json],{type:'application/json'})),link=document.createElement('a');
+   link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }
+ window.WMStartupCheckpoint={prepare,exportCopy,downloadCopy};
 })();
