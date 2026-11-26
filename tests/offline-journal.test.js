@@ -162,3 +162,52 @@ test('four offline device snapshots converge to the configured Cloer without tou
   assert.equal(remote.data.purchaseEntries.length,backup.purchaseEntries.length+4);
   assert.ok(remote.data.energyConfig.devices.some(d=>d.id===auto.id),'stale default can remain in raw data but cannot reappear in the UI');
 });
+
+test('cent ledger keeps neutral expense, settlement, posted energy and odd loss separate',()=>{
+ const p=phone(stored());
+ const full=readFileSync(join(__dirname,'../app1.txt'),'utf8');
+ p(full.slice(full.indexOf('const isLegacyPurchase='),full.indexOf('function shopHTML(')));
+ const result=JSON.parse(p(`JSON.stringify(accountingFor({family1:'Römer',family2:'Rusche',purchaseEntries:[
+  {buyerKey:'family1',total:25.44},{buyerKey:'family2',total:63.150000000000006},
+  {buyerKey:'neutral',total:515.17},{buyerKey:'neutral',total:515,kind:'settlement',settlementFrom:'family1'}
+ ],saleEntries:[{cookieQty:1,cookiePrice:50,reservationId:'synthetic'}],
+ energyLogs:[{family:'Römer',cost:.335},{family:'Rusche',cost:.105}],
+ energyConfig:{devices:[{running:true,startAt:1,watts:1000}]}}))`));
+ assert.equal(result.revenueCents,5000);
+ assert.equal(result.purchaseCents,60376);
+ assert.equal(result.costs.neutral,51517);
+ assert.deepEqual(result.energy,{family1:34,family2:11,unassigned:0});
+ assert.equal(result.profitCents,-55421);
+ assert.deepEqual([result.share1,result.share2],[-27710,-27711]);
+ assert.deepEqual([result.expense1,result.expense2],[2578,6326]);
+ assert.deepEqual([result.balance1,result.balance2],[26368,-72885]);
+});
+test('stale or later edited copy does not resurrect a deleted purchase',()=>{
+ const p=phone(stored());const remote={...backup,purchaseEntries:[],_sync:{tombstones:{purchaseEntries:{existing:'2026-11-20T12:00:00Z'}}}};
+ const stale={...backup,purchaseEntries:[{...backup.purchaseEntries[0],_updatedAt:'2026-11-25T12:00:00Z'}]};
+ assert.equal(p(`mergeStates(${JSON.stringify(stale)},${JSON.stringify(remote)},2026,'2026-11-20T12:00:00Z').purchaseEntries.length`),0);
+});
+test('six-week-old local purchase edit survives restart, API rejection and delete conflict',async()=>{
+ const data=stored();
+ const stamp='2026-11-25T00:00:00Z';
+ const remote={...backup,purchaseEntries:[],_sync:{tombstones:{purchaseEntries:{existing:stamp}}}};
+ let available=false;
+ const net=async(url,{method='GET'}={})=>{
+   assert.equal(method,'GET','conflict must not overwrite the cloud');
+   if(!available)return {ok:false,status:503,text:async()=>'unavailable'};
+   return {ok:true,text:async()=>JSON.stringify([new URL(url).searchParams.get('select')==='updated_at'?{updated_at:stamp}:{data:remote,updated_at:stamp}])};
+ };
+ const old=phone(data,net);old("s.purchaseEntries[0].total=7;save()");
+ const journalKey='wm_backen_journal_v1_'+year, journal=JSON.parse(data.get(journalKey));
+ journal.details[journal.pending[0]].at='2026-10-14T00:00:00Z';data.set(journalKey,JSON.stringify(journal));
+ const latest=phone(data,net);
+ await assert.rejects(latest(`syncYear(${year})`),/Cloud 503/);
+ assert.equal(phone(data,net)("s.purchaseEntries[0].total"),7);
+ available=true;
+ assert.equal(await latest(`syncYear(${year})`),'conflict');
+ const saved=JSON.parse(data.get(journalKey));
+ assert.equal(saved.conflict.code,'WM_PURCHASE_DELETED');
+ assert.equal(saved.pending.length,1);
+ assert.equal(saved.state.purchaseEntries[0].receiptPhoto,'synthetic-photo-fixture');
+ assert.equal(saved.details[saved.pending[0]].at,'2026-10-14T00:00:00Z');
+});

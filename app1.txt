@@ -277,7 +277,7 @@ function mergeStates(localRaw,cloudRaw,year,cloudStamp){
      const id=entityId(kind,item,i),old=items.get(id);
      if(!old||String(item._updatedAt||'')>=String(old._updatedAt||''))items.set(id,{...item,id});
    });
-   setPath(merged,kind,[...items.values()].filter(item=>String(tomb[item.id]||'')<String(item._updatedAt||'')));
+   setPath(merged,kind,[...items.values()].filter(item=>kind==='purchaseEntries'?!Object.hasOwn(tomb,item.id):String(tomb[item.id]||'')<String(item._updatedAt||'')));
    merged._sync.tombstones[kind]=tomb;
  });
  merged._sync.schema=2;
@@ -319,6 +319,7 @@ function requestBackgroundRender(){
  if(!globalThis.formRenderGuard?.defer())render();
 }
 const stockConflictHelp={
+ WM_PURCHASE_DELETED:'Ein auf diesem Handy bearbeiteter Einkauf wurde auf einem anderen Gerät gelöscht. Lokale Änderung exportieren und vor einer Korrektur prüfen. Der gelöschte Eintrag wird nicht wiederhergestellt.',
  WM_STOCK_INSUFFICIENT:'Freien Bestand prüfen. Verkauf, offene Reservierungsmenge oder Produktionskorrektur an den verfügbaren Bestand anpassen.',
  WM_STOCK_STALE_RESERVATION:'Die Reservierung wurde auf einem anderen Gerät geändert. Mit dem aktuellen Stand abgleichen.',
  WM_STOCK_PICKUP_SALE_MISMATCH:'Abholung und Verkauf stimmen nicht überein. Abholung über die Reservierung prüfen und korrigieren.',
@@ -357,6 +358,10 @@ async function syncYear(year,retryConflict=false){
    if(visibleStamp&&!row)throw new Error('Cloud-Jahr beim Lesen verschwunden');
    if(!row&&(!local||isPristineLocalState(local))) {cloudStamps.set(year,'');return}
    const remote=row?normalizeState(row.data,year,row.data?._sync?.migratedAt||row.updated_at):null;
+   const purchaseTombstones=remote?._sync?.tombstones?.purchaseEntries||{};
+   const conflicts=pending.filter(id=>(stored?.details?.[id]?.targets||[]).some(change=>
+     change.label==='Einkauf'&&Object.hasOwn(purchaseTombstones,change.id)&&local?.purchaseEntries?.some(e=>e.id===change.id)));
+   if(conflicts.length){holdSyncConflict(year,'WM_PURCHASE_DELETED',conflicts);return 'conflict'}
    let merged;
    try{merged=cloudCandidate(local,remote,row,year,operations)}
    catch(error){
@@ -425,6 +430,7 @@ async function initCloud(force=false){
 }
 addEventListener('online',()=>{if(IS_PRODUCTION_DEPLOYMENT)initCloud(true)});
 addEventListener('focus',()=>{if(IS_PRODUCTION_DEPLOYMENT&&!cloudDelay)initCloud(true)});
+document.addEventListener?.('visibilitychange',()=>{if(document.visibilityState==='visible'&&IS_PRODUCTION_DEPLOYMENT&&!cloudDelay)initCloud(true)});
 addEventListener('offline',()=>{clearTimeout(cloudPoll);cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false)});
 function archivedYear(year){
  try{
@@ -475,7 +481,21 @@ function kwh(d,type){const w=type==='iron'?d.count*d.wattsEach:d.watts;return w/
 const powerCost=(d,type)=>kwh(d,type)*s.powerPrice;
 const isLegacyPurchase=item=>Boolean(item?.done&&!item?.purchaseEntryId&&item?.pendingPurchase!==true);
 const itemCost=x=>Math.max(0,Math.round(n(x.qty)))*n(x.unitPrice!==undefined?x.unitPrice:(n(x.qty)>0?n(x.cost)/n(x.qty):0));
-const shopTotalFor=state=>(state.purchaseEntries||[]).reduce((sum,e)=>sum+n(e.total),0)+(state.shopping||[]).filter(isLegacyPurchase).reduce((sum,x)=>sum+itemCost(x),0);
+const moneyCents=v=>Math.sign(n(v))*Math.round((Math.abs(n(v))+1e-10)*100);
+const isSettlement=e=>e?.kind==='settlement'&&(e.settlementFrom==='family1'||e.settlementFrom==='family2');
+function purchaseLedger(state){
+ const costs={family1:0,family2:0,neutral:0,'legacy-unassigned':0}, transfers={family1:0,family2:0};
+ for(const e of state.purchaseEntries||[]){
+   const cents=moneyCents(e.total);
+   if(isSettlement(e)){
+     const from=e.settlementFrom,to=from==='family1'?'family2':'family1';
+     transfers[from]+=cents;transfers[to]-=cents;
+   }else costs[purchasePartyKey(e,state)]+=cents;
+ }
+ for(const e of (state.shopping||[]).filter(isLegacyPurchase))costs[purchasePartyKey(e,state)]+=moneyCents(itemCost(e));
+ return {costs,transfers,purchaseCents:Object.values(costs).reduce((x,y)=>x+y,0)};
+}
+const shopTotalFor=state=>purchaseLedger(state).purchaseCents/100;
 const shopTotal=()=>shopTotalFor(s);
 function purchasePartyKey(entry,state=s){
  if(entry?.buyerKey==='family1'||entry?.buyerKey==='family2'||entry?.buyerKey==='neutral')return entry.buyerKey;
@@ -488,31 +508,21 @@ function purchasePartyLabel(entry,state=s){
  const key=purchasePartyKey(entry,state);
  return key==='family1'?state.family1:key==='family2'?state.family2:key==='neutral'?'Gemeinsam / Neutral':entry?.buyer||'Nicht zugeordnet';
 }
-function neutralExpenses(state=s){
- const purchases=(state.purchaseEntries||[]).reduce((sum,e)=>sum+(purchasePartyKey(e,state)==='neutral'?n(e.total):0),0);
- const legacy=(state.shopping||[]).filter(isLegacyPurchase).reduce((sum,e)=>sum+(purchasePartyKey(e,state)==='neutral'?itemCost(e):0),0);
- return purchases+legacy;
-}
-function familyExpenses(){
- const out={[s.family1]:0,[s.family2]:0};let unassigned=0;
- (s.purchaseEntries||[]).forEach(e=>{const cost=n(e.total),key=purchasePartyKey(e);if(key==='family1')out[s.family1]+=cost;else if(key==='family2')out[s.family2]+=cost;else if(key==='legacy-unassigned')unassigned+=cost});
- s.shopping.filter(isLegacyPurchase).forEach(x=>{const cost=itemCost(x),key=purchasePartyKey(x);if(key==='family1')out[s.family1]+=cost;else if(key==='family2')out[s.family2]+=cost;else if(key==='legacy-unassigned')unassigned+=cost});
- out[s.family1]=(out[s.family1]||0)+unassigned/2;out[s.family2]=(out[s.family2]||0)+unassigned/2;return out;
-}
-function saleTotals(){
- const entries=s.saleEntries||[];
+function neutralExpenses(state=s){return purchaseLedger(state).costs.neutral/100}
+function saleTotals(state=s){
+ const entries=state.saleEntries||[];
  return entries.reduce((a,e)=>{
   a.cookie+=n(e.cookieQty);a.horn+=n(e.hornQty);a.mixed+=n(e.mixedQty);
-  a.cookieRev+=n(e.cookieQty)*n(e.cookiePrice);
-  a.hornRev+=n(e.hornQty)*n(e.hornPrice);
-  a.mixedRev+=n(e.mixedQty)*n(e.mixedPrice);
+  a.cookieRev+=moneyCents(n(e.cookieQty)*n(e.cookiePrice));
+  a.hornRev+=moneyCents(n(e.hornQty)*n(e.hornPrice));
+  a.mixedRev+=moneyCents(n(e.mixedQty)*n(e.mixedPrice));
   return a;
  },{cookie:0,horn:0,mixed:0,cookieRev:0,hornRev:0,mixedRev:0});
 }
-const cookieRevenue=()=>saleTotals().cookieRev;
-const hornRevenue=()=>saleTotals().hornRev;
-const mixedRevenue=()=>saleTotals().mixedRev;
-const revenue=()=>cookieRevenue()+hornRevenue()+mixedRevenue();
+const cookieRevenue=()=>saleTotals().cookieRev/100;
+const hornRevenue=()=>saleTotals().hornRev/100;
+const mixedRevenue=()=>saleTotals().mixedRev/100;
+const revenue=()=>{const x=saleTotals();return (x.cookieRev+x.hornRev+x.mixedRev)/100};
 
 function logMinutes(log){
  if(n(log.durationMs)>0)return n(log.durationMs)/60000;
@@ -526,15 +536,15 @@ function deviceWatts(device,state=s,ironCount){
  if(device==='stove')return n(state.stove?.watts)||1400;
  return n(state.oven?.watts)||3000;
 }
-function energyLogKwh(log){
+function energyLogKwh(log,state=s){
  if(log.kwh!==undefined&&Number.isFinite(Number(log.kwh)))return Math.max(0,Number(log.kwh));
  const mins=logMinutes(log);
- const watts=n(log.watts)||deviceWatts(log.device,s,log.ironCount);
+ const watts=n(log.watts)||deviceWatts(log.device,state,log.ironCount);
  return watts/1000*(mins/60);
 }
-function energyLogCost(log){
+function energyLogCost(log,state=s){
  if(log.cost!==undefined&&Number.isFinite(Number(log.cost)))return Math.max(0,Number(log.cost));
- return energyLogKwh(log)*(log.powerPrice!==undefined?n(log.powerPrice):s.powerPrice);
+ return energyLogKwh(log,state)*(log.powerPrice!==undefined?n(log.powerPrice):n(state.powerPrice));
 }
 function energyLogsCost(){return (s.energyLogs||[]).reduce((a,l)=>a+energyLogCost(l),0)}
 
@@ -546,8 +556,23 @@ function flexibleRunningEnergyCost(state=s){
    return sum+(watts/1000)*(Math.max(0,Date.now()-d.startAt)/3600000)*price;
  },0);
 }
-const totalEnergy=()=>powerCost(s.oven,'oven')+powerCost(s.iron,'iron')+powerCost(s.machine,'machine')+powerCost(s.stove,'stove')+energyLogsCost()+flexibleRunningEnergyCost();
-const profit=()=>revenue()-shopTotal()-totalEnergy();
+function accountingFor(state=s){
+ const ledger=purchaseLedger(state), sales=saleTotals(state);
+ const energy={family1:0,family2:0,unassigned:0};
+ for(const entry of state.energyLogs||[]){
+   const family=entry.family===state.family1?'family1':entry.family===state.family2?'family2':'unassigned';
+   energy[family]+=moneyCents(energyLogCost(entry,state));
+ }
+ const energyCents=Object.values(energy).reduce((x,y)=>x+y,0),revenueCents=sales.cookieRev+sales.hornRev+sales.mixedRev;
+ const profitCents=revenueCents-ledger.purchaseCents-energyCents;
+ // The indivisible cent is assigned consistently to family2, also for losses.
+ const share1=Math.trunc(profitCents/2),share2=profitCents-share1;
+ const expense1=ledger.costs.family1+energy.family1,expense2=ledger.costs.family2+energy.family2;
+ return {...ledger,sales,energy,energyCents,revenueCents,profitCents,share1,share2,expense1,expense2,
+   balance1:share1+expense1+ledger.transfers.family1,balance2:share2+expense2+ledger.transfers.family2};
+}
+const totalEnergy=()=>accountingFor().energyCents/100;
+const profit=()=>accountingFor().profitCents/100;
 
 function shopHTML(x,i){
  const qty=Math.max(0,Math.round(n(x.qty)));

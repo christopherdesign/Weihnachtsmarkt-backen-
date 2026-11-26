@@ -1,7 +1,7 @@
 ;$('purchaseDate').value=s.purchase.date;
  $('hornBatches').value=s.planning.hornBatches;$('cookieBatches').value=s.planning.cookieBatches;$('cookieKg').value=s.planning.cookieKg;$('chocPerKg').value=s.planning.chocPerKg;renderNeeds();
  $('yearText').textContent=s.year;
- $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('homeCostsTotal').textContent=eur(shopTotal()+totalEnergy());$('famKpi').textContent=eur(profit()/2);
+ $('revKpi').textContent=eur(revenue());$('costKpi').textContent=eur(shopTotal());$('energyKpi').textContent=eur(totalEnergy());$('homeCostsTotal').textContent=eur(shopTotal()+totalEnergy());$('famKpi').textContent=accountingFor().share1===accountingFor().share2?eur(accountingFor().share1/100):eur(accountingFor().share1/100)+' / '+eur(accountingFor().share2/100);
  const st=saleTotals();$('cookieHome').textContent=st.cookie;$('hornHome').textContent=st.horn;$('mixedHome').textContent=st.mixed;
  $('cookieHomeRev').textContent=eur(cookieRevenue())+' Umsatz';$('hornHomeRev').textContent=eur(hornRevenue())+' Umsatz';$('mixedHomeRev').textContent=eur(mixedRevenue())+' Umsatz';
  $('powerPrice').value=s.powerPrice;
@@ -28,10 +28,12 @@
  const stock=stockTotals();
  $('homeStockTotal').textContent=stock.cookie+stock.horn+stock.mixed;
  [['Cookie',stock.cookie],['Horn',stock.horn],['Mixed',stock.mixed]].forEach(([kind,value])=>{const el=$('homeStock'+kind);el.textContent=value;el.className='stocknum '+stockClass(value)});
- const expenses=familyExpenses(),common=profit(),share=common/2,claim1=expenses[s.family1]+share,claim2=expenses[s.family2]+share;
+ const tally=accountingFor(),common=tally.profitCents/100,claim1=tally.balance1/100,claim2=tally.balance2/100;
  $('family1Label').textContent=s.family1;$('family2Label').textContent=s.family2;
- $('family1Expenses').textContent=eur(expenses[s.family1]);$('family2Expenses').textContent=eur(expenses[s.family2]);
- $('neutralExpenses').textContent=eur(neutralExpenses());$('commonResult').textContent=eur(common);$('resultShare').textContent=eur(share);
+ $('family1Expenses').textContent=eur(tally.expense1/100);$('family2Expenses').textContent=eur(tally.expense2/100);
+ $('neutralExpenses').textContent=eur(neutralExpenses());$('commonResult').textContent=eur(common);$('resultShare').textContent=eur(tally.share1/100)+(tally.share1!==tally.share2?' / '+eur(tally.share2/100):'');
+ $('settlementAmount').textContent=eur(Math.abs(tally.transfers.family1)/100);
+ $('settlementDirection').textContent=tally.transfers.family1===0?'Kein Netto-Ausgleich':(tally.transfers.family1>0?s.family1+' → '+s.family2:s.family2+' → '+s.family1);
  $('resultState').textContent=common<0?'Verlust':'Gewinn';$('resultState').className='pill '+(common<0?'bad':'good');
  $('family1Payout').textContent=eur(claim1)+(claim1<0?' Ausgleichspflicht':' Abrechnungsanspruch');
  $('family2Payout').textContent=eur(claim2)+(claim2<0?' Ausgleichspflicht':' Abrechnungsanspruch');
@@ -43,7 +45,7 @@ let deferredRenderTimer=null;
 {
  let engagedPage=null,dirty=false,pending=false;
  const controls='input,select,textarea,[contenteditable],summary';
- const staged='.energy-manual,.energy-log-edit,.production-entry-edit,#reserveCreate,#reserveList form,#newName,#newCost,#receiptPhoto,#saleCustomDate,#saleDateSelect,#productionDate,#newDeviceName,#newDeviceWatts,#newDeviceFamily,#newDeviceType';
+ const staged='.purchase-entry-edit,.energy-manual,.energy-log-edit,.production-entry-edit,#reserveCreate,#reserveList form,#newName,#newCost,#receiptPhoto,#saleCustomDate,#saleDateSelect,#productionDate,#newDeviceName,#newDeviceWatts,#newDeviceFamily,#newDeviceType';
  function engage(e){
    const control=e.target.closest?.(controls);
    const page=control?.closest('.page.active');
@@ -175,7 +177,7 @@ async function compressReceiptPhoto(file){
 }
 function purchaseLineTotal(item){
  const qty=Math.max(0,Math.round(n(item.qty))),price=n(item.unitPrice!==undefined?item.unitPrice:(qty>0?n(item.cost)/qty:0));
- return qty*price;
+ return moneyCents(qty*price)/100;
 }
 function localToday(){
  const d=new Date();return `${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())}`;
@@ -198,7 +200,7 @@ $('savePurchase').onclick=async()=>{
  const date=$('purchaseDate').value||localToday(),buyerKey=$('buyer').value,store=$('store').value.trim();
  const createdAt=nowIso(),entryId=makeId('purchase');
  const items=selected.map(item=>({name:item.name,qty:Math.max(0,Math.round(n(item.qty))),unit:item.unit||'Stück',unitPrice:n(item.unitPrice),total:purchaseLineTotal(item)}));
- const entry={id:entryId,date,buyerKey,buyer:purchasePartyLabel({buyerKey}),store,items,total:items.reduce((sum,item)=>sum+n(item.total),0),receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt,updatedAt:createdAt};
+ const entry={id:entryId,date,buyerKey,buyer:purchasePartyLabel({buyerKey}),store,items,total:items.reduce((sum,item)=>sum+moneyCents(item.total),0)/100,receiptPhoto:pendingReceiptPhoto?.dataUrl||null,receiptName:pendingReceiptPhoto?.name||null,createdAt,updatedAt:createdAt};
  s.purchaseEntries=s.purchaseEntries||[];s.purchaseEntries.push(entry);
  selected.forEach(item=>{item.qty=0;item.unitPrice=0;item.cost=0;item.done=false;item.pendingPurchase=false;item.purchaseDate=date;item.buyerKey=buyerKey;item.buyer=entry.buyer;item.store=store});
  s.purchase.date=date;
@@ -206,6 +208,36 @@ $('savePurchase').onclick=async()=>{
  pendingReceiptPhoto=null;$('receiptPhoto').value='';formRenderGuard.finish();render();
  status.textContent='Einkauf lokal gespeichert. Den Cloud-Status zeigt die Anzeige oben.';
 };
+$('purchaseHistory').addEventListener('submit',event=>{
+ const form=event.target.closest('form[data-purchase-edit]');if(!form)return;
+ event.preventDefault();
+ const message=form.querySelector('[data-purchase-message]'), entry=(s.purchaseEntries||[]).find(e=>e.id===form.dataset.purchaseEdit);
+ if(!entry||(entry._updatedAt||entry.updatedAt||'')!==form.dataset.revision){message.textContent='Die Buchung wurde auf einem anderen Gerät geändert. Entwurf abgleichen, bevor du erneut speicherst.';return}
+ const fields=form.elements,kind=fields.kind.value, settlement=kind==='family1'||kind==='family2';
+ const rows=[...form.querySelectorAll('[data-purchase-line]')], prior=entry.items||[];
+ const read=(row,field)=>row.querySelector('[data-line-field="'+field+'"]');
+ const items=rows.map((row,i)=>{
+   const old=prior[i],qty=n(read(row,'qty').value),price=moneyCents(read(row,'price').value)/100;
+   const amountChanged=qty!==n(old.qty)||moneyCents(price)!==moneyCents(old.unitPrice);
+   const rename=read(row,'name').value.trim();
+   return {...old,name:rename,qty,unitPrice:amountChanged?price:old.unitPrice,total:amountChanged?moneyCents(qty*price)/100:old.total};
+ });
+ if(!form.reportValidity()||items.some(x=>!x.name||!Number.isInteger(x.qty)||x.qty<1))return;
+ const linesChanged=items.some((x,i)=>n(x.qty)!==n(prior[i].qty)||moneyCents(x.unitPrice)!==moneyCents(prior[i].unitPrice));
+ const amount=settlement||!linesChanged?moneyCents(fields.total.value):items.reduce((x,y)=>x+moneyCents(y.total),0);
+ if(amount<0||!Number.isSafeInteger(amount)||(settlement&&amount===0)){message.textContent='Bitte gültigen Betrag eingeben.';return}
+ if(settlement&&!isSettlement(entry)&&!confirm('Diesen Datensatz als reine Ausgleichszahlung erfassen? Er wird nicht mehr als Einkaufskosten angerechnet. Der ursprüngliche Beleg bleibt erhalten.'))return;
+ const buyerKey=fields.buyer.value,at=nowIso();
+ const correction={at,kind:entry.kind||'expense',settlementFrom:entry.settlementFrom,buyerKey:entry.buyerKey,buyer:entry.buyer,date:entry.date,store:entry.store,total:entry.total,items:deep(prior)};
+ const next={...entry,date:fields.date.value,store:fields.store.value.trim(),buyerKey,
+   buyer:buyerKey==='legacy-unassigned'?(entry.buyerKey==='legacy-unassigned'?entry.buyer:'') : purchasePartyLabel({buyerKey}),
+   kind:settlement?'settlement':'expense',items,total:amount/100,updatedAt:at,
+   corrections:[...(entry.corrections||[]),correction]};
+ if(settlement)next.settlementFrom=kind;else delete next.settlementFrom;
+ s.purchaseEntries=s.purchaseEntries.map(e=>e.id===entry.id?next:e);
+ try{save()}catch(error){message.textContent='Konnte nicht lokal speichern. Der Entwurf bleibt erhalten.';return}
+ formRenderGuard.finish();render();
+});
 $('purchaseHistory').onclick=e=>{
  const id=e.target.dataset.purchasedel;if(!id)return;
  if(confirm('Diesen Einkaufsnachweis wirklich löschen? Der Betrag wird dann auch aus den Kosten entfernt.')){s.purchaseEntries=s.purchaseEntries.filter(x=>x.id!==id);save();render()}
@@ -353,7 +385,23 @@ $('logDate').value=new Date().toISOString().slice(0,10);
 $('logDevice').onchange();
 
 $('exportBtn').onclick=()=>{const filename=`weihnachtsmarkt-backen-${s.year}.json`,json=JSON.stringify(s,null,2);if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}const b=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();URL.revokeObjectURL(a.href)};
-$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text()),payload=parsed?.backupFormat&&parsed?.data?parsed.data:parsed;const incoming=normalizeState(payload,s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
+function exportDeviceSnapshot(){
+ const storage={};
+ for(let i=0;i<localStorage.length;i++){
+   const key=localStorage.key(i);
+   if(key?.startsWith('wm_backen_'))storage[key]=localStorage.getItem(key);
+ }
+ // Document the exact locally persisted state without merging it into this or another device.
+ const bundle={format:'wm-device-diagnostics-v1',exportedAt:nowIso(),deviceId:deviceId(),version:document.title,
+   online:navigator.onLine,syncStatus:$('syncLabel')?.textContent||'',activeYear:s.year,
+   latestState:deep(s),storage};
+ const filename='weihnachtsmarkt-geraetesicherung-'+localToday()+'.json',json=JSON.stringify(bundle);
+ if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}
+ const url=URL.createObjectURL(new Blob([json],{type:'application/json'})),link=document.createElement('a');
+ link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$('exportDeviceBtn').onclick=exportDeviceSnapshot;
+$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text());if(parsed?.format==='wm-device-diagnostics-v1'){alert('Dieser Geräteexport enthält mehrere Jahre und das Offline-Journal. Nicht als einzelnes Abrechnungsjahr importieren.');return}const payload=parsed?.backupFormat&&parsed?.data?parsed.data:parsed;const incoming=normalizeState(payload,s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
 $('copySyncLink').onclick=async()=>{
  const link=workspaceShareUrl(),hint=$('syncShareHint');
  try{await navigator.clipboard.writeText(link);hint.textContent='Freigabelink kopiert – jetzt auf dem zweiten Handy öffnen.'}

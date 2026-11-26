@@ -19,7 +19,7 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   page.setDefaultTimeout(6000);
   page.on('pageerror',e=>errors.push(e.message));
   const original={id:'prior',family:'Rusche',deviceId:'dev-rusche-machine',date:'2026-01-06',start:'10:00',end:'10:30',watts:1400,powerPrice:0.24,kwh:0.7,cost:0.168};
-  const receipts=[{id:'receipt',total:3,receiptPhoto:'synthetic-photo'}];
+  const receipts=[{id:'receipt',date:'2026-11-06',buyerKey:'family1',total:3,receiptPhoto:'synthetic-photo',items:[{name:'Mehl',qty:1,unitPrice:3,total:3}]}];
   const sales=[{id:'historic-sale',cookieQty:1,cookiePrice:9,mixedQty:0,hornQty:0}];
   const reservations=[{id:'existing-reservation',name:'Test',open:{cookie:0,horn:0,mixed:0},pickups:[],audit:[],revision:0}];
   const started=Date.now()-900000;
@@ -154,6 +154,19 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
       {id,type:'Hörncheneisen',family:'Rusche',name:'Cloer',watts:800,ironCount:5}
     ]}}));
   },{host:new URL(preview).hostname,year:today,id:actualCloer});
+  await page.locator('[data-page="shop"]').press('Enter');
+  await page.locator('.purchase-entry-edit summary').first().press('Enter');
+  const purchaseEdit=page.locator('form[data-purchase-edit="receipt"]');
+  await purchaseEdit.locator('[name="store"]').fill('Neuer Laden');
+  await purchaseEdit.locator('[data-line-field="qty"]').fill('2');
+  await purchaseEdit.getByRole('button',{name:'Änderung speichern'}).press('Enter');
+  await page.locator('#syncLabel').filter({hasText:'Synchronisiert'}).waitFor();
+  const savedReceipt=remote.data.purchaseEntries.find(e=>e.id==='receipt');
+  assert.equal(savedReceipt.store,'Neuer Laden');
+  assert.equal(savedReceipt.total,6);
+  assert.equal(savedReceipt.receiptPhoto,'synthetic-photo');
+  assert.equal(savedReceipt.corrections[0].total,3);
+  assert.equal(remote.data.purchaseEntries.length,1);
   await page.goto(preview+'/');
   await page.locator('[data-start="'+actualCloer+'"]').waitFor({state:'attached'});
   assert.equal(await page.locator('[data-start="dev-rusche-iron"]').count(),0,'initializing an existing device list does not seed a second Cloer');

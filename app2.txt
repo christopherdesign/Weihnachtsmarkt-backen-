@@ -138,16 +138,28 @@ function renderPurchaseDraft(){
 function renderPurchaseHistory(){
  const box=$('purchaseHistory');if(!box)return;
  const entries=[...(s.purchaseEntries||[])].sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
- const itemCount=entries.reduce((sum,e)=>sum+(e.items||[]).reduce((q,item)=>q+Math.max(0,Math.round(n(item.qty))),0),0);
- if($('purchaseEntryCount'))$('purchaseEntryCount').textContent=entries.length+' Einkäufe · '+itemCount+' Artikel';
+ const itemCount=entries.filter(e=>!isSettlement(e)).reduce((sum,e)=>sum+(e.items||[]).reduce((q,item)=>q+Math.max(0,Math.round(n(item.qty))),0),0);
+ if($('purchaseEntryCount'))$('purchaseEntryCount').textContent=entries.filter(e=>!isSettlement(e)).length+' Einkäufe · '+entries.filter(isSettlement).length+' Ausgleiche · '+itemCount+' Artikel';
  box.innerHTML=entries.length?entries.map(e=>{
    const lines=(e.items||[]).map(item=>`<div class="purchase-line"><span>${Math.max(0,Math.round(n(item.qty)))} × ${esc(item.name||'Artikel')}</span><strong>${eur(n(item.total))}</strong></div>`).join('');
    const receiptUrl=safeReceiptUrl(e.receiptPhoto);
    const photo=receiptUrl?`<a class="receipt-link" href="${receiptUrl}" target="_blank" rel="noopener"><img src="${receiptUrl}" alt="Bonfoto"><span>Bon vergrößern</span></a>`:'<div class="muted">Kein Bonfoto hinterlegt</div>';
+   const selected=(value,wanted)=>value===wanted?' selected':'';
+   const party=purchasePartyKey(e),kind=isSettlement(e)?e.settlementFrom:'expense';
+   const fields=(e.items||[]).map((item,i)=>`<div class="row" data-purchase-line="${i}"><div class="c6 sm12"><label>Artikel</label><input data-line-field="name" required maxlength="150" value="${esc(item.name||'Artikel')}"></div><div class="c3 sm6"><label>Menge</label><input data-line-field="qty" type="number" min="1" step="1" required value="${esc(item.qty)}"></div><div class="c3 sm6"><label>Einzelpreis (€)</label><input data-line-field="price" type="number" min="0" step="0.01" required value="${moneyCents(item.unitPrice)/100}"></div></div>`).join('');
+   const edit=`<details class="purchase-entry-edit"><summary>Bearbeiten / Buchungsart prüfen</summary>
+    <form data-purchase-edit="${esc(e.id)}" data-revision="${esc(e._updatedAt||e.updatedAt||'')}">
+    <div class="row"><div class="c4 sm12"><label>Datum</label><input name="date" type="date" required value="${esc(e.date||'')}"></div>
+    <div class="c4 sm12"><label>Geschäft / Beschreibung</label><input name="store" value="${esc(e.store||'')}" maxlength="150"></div>
+    <div class="c4 sm12"><label>Buchungsart</label><select name="kind"><option value="expense"${selected('expense',kind)}>Einkauf</option><option value="family1"${selected('family1',kind)}>Ausgleich: ${esc(s.family1)} → ${esc(s.family2)}</option><option value="family2"${selected('family2',kind)}>Ausgleich: ${esc(s.family2)} → ${esc(s.family1)}</option></select></div>
+    <div class="c6 sm12"><label>Einkaufszuordnung</label><select name="buyer"><option value="legacy-unassigned"${selected('legacy-unassigned',party)}>Nicht zugeordnet</option><option value="family1"${selected('family1',party)}>${esc(s.family1)}</option><option value="family2"${selected('family2',party)}>${esc(s.family2)}</option><option value="neutral"${selected('neutral',party)}>Gemeinsam / Neutral</option></select></div>
+    <div class="c6 sm12"><label>Betrag (€)</label><input name="total" type="number" min="0" step="0.01" required value="${moneyCents(e.total)/100}"></div></div>
+    ${fields}<p class="muted">Wenn sich Menge oder Preis ändern, wird die Summe aus den Positionen berechnet. Bei Ausgleichszahlungen gilt der eingegebene Betrag, der Beleg bleibt erhalten.</p>
+    <button class="primary" type="submit">Änderung speichern</button><p data-purchase-message role="status"></p></form></details>`;
    return `<article class="purchase-entry">
-    <div class="salehead"><div><strong>${purchaseDateLabel(e.date)}</strong><div class="muted">${esc(purchasePartyLabel(e))}${e.store?' · '+esc(e.store):''}${e.createdAt?' · gespeichert '+new Date(e.createdAt).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div></div><button class="danger" data-purchasedel="${esc(e.id)}" type="button">×</button></div>
+    <div class="salehead"><div><strong>${purchaseDateLabel(e.date)}</strong><div class="muted">${isSettlement(e)?'Ausgleich · '+esc(e.settlementFrom==='family1'?s.family1+' → '+s.family2:s.family2+' → '+s.family1):esc(purchasePartyLabel(e))}${e.store?' · '+esc(e.store):''}${e.createdAt?' · gespeichert '+new Date(e.createdAt).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):''}</div></div><button class="danger" data-purchasedel="${esc(e.id)}" type="button">×</button></div>
     <div class="purchase-proof"><div>${lines||'<div class="muted">Keine Artikel im Nachweis</div>'}<div class="sep"></div><strong>Gesamt: ${eur(e.total)}</strong></div>${photo}</div>
-   </article>`;
+   ${edit}</article>`;
  }).join(''):'<div class="muted">Noch kein Einkauf gespeichert. Markiere gekaufte Artikel, füge bei Bedarf ein Bonfoto hinzu und tippe auf „Einkauf speichern“.</div>';
  renderPurchaseDraft();
 }
@@ -169,29 +181,8 @@ function drawBarChart(canvas, labels, values){
 
 function metricsForState(state){
  if(!state)return {revenue:0,shop:0,energy:0,profit:0,buckets:0,cookie:0,horn:0,mixed:0};
- const entries=Array.isArray(state.saleEntries)?state.saleEntries:[];
- const sales=entries.reduce((a,e)=>{
-   a.cookie+=n(e.cookieQty);a.horn+=n(e.hornQty);a.mixed+=n(e.mixedQty);
-   a.revenue+=n(e.cookieQty)*n(e.cookiePrice)+n(e.hornQty)*n(e.hornPrice)+n(e.mixedQty)*n(e.mixedPrice);
-   return a;
- },{cookie:0,horn:0,mixed:0,revenue:0});
- const shop=shopTotalFor(state);
- const timerElapsed=d=>(d?.elapsed||0)+(d?.running&&d?.startAt?Date.now()-d.startAt:0);
- const ovenKwh=(n(state.oven?.watts)/1000)*(timerElapsed(state.oven)/3600000);
- const ironKwh=((n(state.iron?.count)||1)*(n(state.iron?.wattsEach)||800)/1000)*(timerElapsed(state.iron)/3600000);
- const machineKwh=((n(state.machine?.watts)||1000)/1000)*(timerElapsed(state.machine)/3600000);
- const stoveKwh=((n(state.stove?.watts)||1400)/1000)*(timerElapsed(state.stove)/3600000);
- const energy=(state.energyLogs||[]).reduce((a,l)=>{
-   if(l.cost!==undefined&&Number.isFinite(Number(l.cost)))return a+Math.max(0,Number(l.cost));
-   let mins=n(l.durationMs)>0?n(l.durationMs)/60000:0;
-   if(!mins&&l.start&&l.end){const [sh,sm]=l.start.split(':').map(Number),[eh,em]=l.end.split(':').map(Number);mins=(eh*60+em)-(sh*60+sm);if(mins<0)mins+=1440}
-   const kwh=l.kwh!==undefined&&Number.isFinite(Number(l.kwh))?Math.max(0,Number(l.kwh)):(n(l.watts)||deviceWatts(l.device,state,l.ironCount))/1000*(mins/60);
-   return a+kwh*(l.powerPrice!==undefined?n(l.powerPrice):n(state.powerPrice));
- },0);
- const legacyRunning=(ovenKwh+ironKwh+machineKwh+stoveKwh)*n(state.powerPrice);
- const flexRunning=(state.energyConfig?.devices||[]).reduce((sum,d)=>{if(!d.running||!d.startAt)return sum;const watts=n(d.runWatts)||n(d.watts)*(d.type==='Hörncheneisen'?(n(d.runIronCount)||n(d.ironCount)||1):1),price=d.runPowerPrice!==undefined?n(d.runPowerPrice):n(state.energyConfig?.prices?.[d.runFamily||d.family])||n(state.powerPrice);return sum+watts/1000*(Math.max(0,Date.now()-d.startAt)/3600000)*price},0);
- const totalEnergyCost=energy+legacyRunning+flexRunning;
- return {revenue:sales.revenue,shop,energy:totalEnergyCost,profit:sales.revenue-shop-totalEnergyCost,buckets:sales.cookie+sales.horn+sales.mixed,cookie:sales.cookie,horn:sales.horn,mixed:sales.mixed};
+ const m=accountingFor(state),sales=m.sales;
+ return {revenue:m.revenueCents/100,shop:m.purchaseCents/100,energy:m.energyCents/100,profit:m.profitCents/100,buckets:sales.cookie+sales.horn+sales.mixed,cookie:sales.cookie,horn:sales.horn,mixed:sales.mixed};
 }
 function deltaInfo(cur,prev,invert=false){
  if(!prev && prev!==0)return {text:'–',cls:'flat'};
