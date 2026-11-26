@@ -6,7 +6,7 @@ const {readFileSync}=require('node:fs');
 const {join}=require('node:path');
 const today=new Date().getFullYear();
 const assetRoot=process.env.WM_ASSET_DIR||join(__dirname,'..');
-const files=new Set(['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','reservations-ui.txt','reservations.js','style.css']);
+const files=new Set(['index.html','app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','reservations-ui.txt','reservations.js','startup-checkpoint.js','style.css']);
 const origin='https://weihnachtsmarkt-backen.vercel.app';
 const preview='https://wm-popup-test.example';
 
@@ -196,5 +196,61 @@ test('Android emulation: active timer and intercepted API sync keep the same nat
   await partial.locator('[value="pickup"]').press('Enter');
   assert.match(await page.locator('#reserveList').textContent(),/Isolierter Popup-Test.*Teilweise abgeholt.*Offen: Kekse: 1/s);
   assert.deepEqual(errors,[]);
+ }finally{await browser.close()}
+});
+
+test('update checkpoint preserves the old journals and blocks startup on storage failures', {timeout:45000}, async()=>{
+ const browser=await chromium.launch(process.env.WM_CHROMIUM?{executablePath:process.env.WM_CHROMIUM}:{});
+ try{
+   const oldPending=JSON.stringify({state:{year:2025,production:{cookie:1},purchaseEntries:[{id:'old-offline',total:4.25,receiptPhoto:'synthetic-photo'}]},pending:['pending-vor-monaten'],details:{'pending-vor-monaten':{at:'2025-11-01'}}});
+   const oldLegacy=JSON.stringify({year:today,purchaseEntries:[{id:'old-year',total:5}]});
+   for(const mode of ['success','quota','blocked','invalid','missing-origin']){
+     const ctx=await browser.newContext({isMobile:true,hasTouch:true,viewport:{width:390,height:780},serviceWorkers:'block'});
+     try{
+       const page=await ctx.newPage();page.setDefaultTimeout(10000);
+       const requested=[];
+       await ctx.route('**/*',async route=>{
+         const u=new URL(route.request().url()),f=u.pathname==='/'?'index.html':u.pathname.slice(1);
+         requested.push(f);
+         if(u.origin!==preview||!files.has(f))return route.abort();
+         return route.fulfill({body:readFileSync(join(assetRoot,f)),contentType:f.endsWith('.html')?'text/html':f.endsWith('.js')?'application/javascript':f.endsWith('.css')?'text/css':'text/plain'});
+       });
+       await ctx.addInitScript(({mode,oldPending,oldLegacy})=>{
+         if(mode!=='missing-origin'&&!localStorage.getItem('wm_backen_v2')){
+           localStorage.setItem('wm_backen_v2',oldLegacy);
+           localStorage.setItem('wm_backen_journal_v1_2025',mode==='invalid'?'{kaputt':oldPending);
+         }
+         if(mode==='missing-origin')window.AndroidBridge={};
+         if(mode==='blocked')indexedDB.open=()=>{throw new DOMException('Storage denied','SecurityError')};
+         if(mode==='quota')IDBObjectStore.prototype.put=()=>{throw new DOMException('Storage limit','QuotaExceededError')};
+       },{mode,oldPending,oldLegacy});
+       await page.goto(preview+'/#existing-workspace');
+       if(mode!=='success'){
+         await page.locator('#previousRelease').waitFor();
+         assert.equal(await page.locator('#previousRelease').getAttribute('href'),'/mobile-releases/10.5.5/index.html#existing-workspace');
+         assert.ok(!requested.includes('app1.txt'),mode+' ran the new app');
+         assert.equal(await page.evaluate(()=>localStorage.getItem('wm_update_activated_10.5.6')),null);
+         assert.equal(await page.evaluate(()=>localStorage.getItem('wm_backen_v2')),mode==='missing-origin'?null:oldLegacy);
+         assert.equal(await page.evaluate(()=>localStorage.getItem('wm_backen_journal_v1_2025')),mode==='missing-origin'?null:mode==='invalid'?'{kaputt':oldPending);
+         continue;
+       }
+       await page.locator('#updateSafetyStatus').waitFor({state:'hidden'});
+       const data=await page.evaluate(()=>window.WMStartupCheckpoint.exportCopy());
+       assert.equal(data.storage.wm_backen_v2,oldLegacy);
+       assert.equal(data.storage.wm_backen_journal_v1_2025,oldPending);
+       await page.evaluate(()=>localStorage.setItem('wm_backen_v2',JSON.stringify({year:2026,production:{cookie:5}})));
+       await page.reload();await page.locator('#updateSafetyStatus').waitFor({state:'hidden'});
+       assert.equal((await page.evaluate(()=>window.WMStartupCheckpoint.exportCopy())).digest,data.digest,'ordinary restart does not overwrite original checkpoint');
+       await page.evaluate(()=>new Promise((resolve,reject)=>{
+         const req=indexedDB.open('wm-update-checkpoints-v1',1);
+         req.onsuccess=()=>{const db=req.result,tx=db.transaction('snapshots','readwrite');
+           tx.objectStore('snapshots').delete('10.5.6');
+           tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>reject(tx.error)};
+         req.onerror=()=>reject(req.error);
+       }));
+       requested.length=0;await page.reload();await page.locator('#previousRelease').waitFor();
+       assert.ok(!requested.includes('app1.txt'),'missing checkpoint must block activation');
+     }finally{await ctx.close()}
+   }
  }finally{await browser.close()}
 });

@@ -237,11 +237,11 @@ function save(operation){
  }
  lastSavedSnapshot=deep(s);
  setSyncStatus('Lokal gespeichert',false);
- if(cloudReady)queueCloudSave();
+ if(IS_PRODUCTION_DEPLOYMENT&&navigator.onLine)queueCloudSave();
 }
 function queueCloudSave(){
  clearTimeout(cloudTimer);
- cloudTimer=setTimeout(()=>saveCloudState(),350);
+ cloudTimer=setTimeout(()=>{cloudTimer=null;saveCloudState()},2500);
 }
 const DEVICE_DIAG_KEY='wm_backen_device_diagnostics_v1';
 let deviceDiagnostics={};
@@ -326,7 +326,8 @@ function setSyncStatus(label,ok){
  if(typeof globalThis.renderDeviceDiagnostics==='function')globalThis.renderDeviceDiagnostics();
 }
 const cloudStamps=new Map();
-let cloudPoll=null, cloudDelay=0;
+let cloudRetryTimer=null, retryAttempts=0;
+const RETRY_DELAYS=[15000,45000,120000];
 const requestedSyncRetries=new Set();
 function requestBackgroundRender(){
  if(!globalThis.formRenderGuard?.defer())render();
@@ -366,9 +367,11 @@ async function syncYear(year,retryConflict=false){
    if(stored?.conflict&&!retryConflict)return 'conflict';
    const operations=pending.map(id=>stored?.details?.[id]?.operation).filter(Boolean);
    const visibleStamp=await getCloudStamp(year);
-   if(!pending.length&&cloudStamps.has(year)&&cloudStamps.get(year)===visibleStamp)return;
+   const cachedRevision=cloudStamps.get(year)??(stored?.cloudWorkspaceId===workspaceId()?stored.cloudRevision:undefined);
+   if(!pending.length&&cachedRevision!==undefined&&cachedRevision===visibleStamp)return;
    const row=visibleStamp?await getCloudRow(year):null;
    if(visibleStamp&&!row)throw new Error('Cloud-Jahr beim Lesen verschwunden');
+   if(!row&&stored?.cloudRevision)throw new Error('Bestätigtes Cloud-Jahr fehlt; lokaler Stand bleibt unverändert');
    if(!row&&(!local||isPristineLocalState(local))) {cloudStamps.set(year,'');return}
    const remote=row?normalizeState(row.data,year,row.data?._sync?.migratedAt||row.updated_at):null;
    const purchaseTombstones=remote?._sync?.tombstones?.purchaseEntries||{};
@@ -383,7 +386,9 @@ async function syncYear(year,retryConflict=false){
      return 'conflict';
    }
    let acknowledged=row?.updated_at||'';
-   if(!remote||!same(merged,remote)){
+   // Preserve one-time V10.5.5 import; do not push normalized/read-only data back.
+   const mayUpload=pending.length>0||((!stored||stored.cloudImportPending===true)&&local&&!isPristineLocalState(local));
+   if(mayUpload&&(!remote||!same(merged,remote))){
      const stamp=new Date(Math.max(Date.now(),(Date.parse(acknowledged)||0)+1)).toISOString();
      const query='app_state?select=updated_at';
      const options={headers:{Prefer:'return=representation'},body:JSON.stringify(row?{data:merged,updated_at:stamp}:{workspace_id:workspaceId(),year,data:merged,updated_at:stamp})};
@@ -411,7 +416,7 @@ async function syncYear(year,retryConflict=false){
      }
    }
    if(concurrent&&latest.state._sync?.lastLocalChange)next._sync.lastLocalChange=latest.state._sync.lastLocalChange;
-   writeLocal(next,remaining,{conflict,details:Object.fromEntries(remaining.filter(id=>latest?.details?.[id]).map(id=>[id,latest.details[id]]))});
+   writeLocal(next,remaining,{conflict,cloudRevision:acknowledged,cloudWorkspaceId:workspaceId(),cloudImportPending:false,details:Object.fromEntries(remaining.filter(id=>latest?.details?.[id]).map(id=>[id,latest.details[id]]))});
    if(acknowledged&&!remaining.length)updateDeviceDiagnostics({lastConfirmedAt:nowIso(),confirmedYear:year,confirmedCloudRevision:acknowledged},true);
    if(Number(s.year)===year){s=next;lastSavedSnapshot=deep(s);requestBackgroundRender()}
    cloudStamps.set(year,acknowledged);
@@ -419,33 +424,44 @@ async function syncYear(year,retryConflict=false){
  }
  throw new Error('Cloud-Konflikt konnte nicht aufgelöst werden');
 }
+function hasRetryableWork(){
+ if(pendingYears().some(year=>!readYearRecord(year)?.conflict))return true;
+ // Older V10.5.5 storage has no pending journal. Permit bounded retries of
+ // its first protected import, not recurring retries for clean archives.
+ const record=readYearRecord(s.year);
+ return (!record||record.cloudImportPending===true)&&!isPristineLocalState(lastSavedSnapshot);
+}
 function saveCloudState(){return initCloud(true)}
-async function initCloud(force=false){
+async function initCloud(force=false,resetRetries=false){
  if(!IS_PRODUCTION_DEPLOYMENT){cloudReady=false;setSyncStatus('Vorschau – isolierter lokaler Testbestand',false);return}
- if(syncInFlight){if(force===true)syncAgain=true;return}
- clearTimeout(cloudPoll);
+ if(syncInFlight){if(force)syncAgain=true;return}
+ clearTimeout(cloudRetryTimer);cloudRetryTimer=null;
+ if(resetRetries)retryAttempts=0;
  if(!navigator.onLine){cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false);return}
  syncInFlight=true;
+ let retry=false;
  try{
    if(pendingYears().length||!cloudReady)setSyncStatus('Übertragung läuft …',false);
    for(const year of new Set([Number(s.year),...pendingYears()]))await syncYear(year,requestedSyncRetries.delete(year));
-   cloudReady=true;cloudDelay=0;
+   cloudReady=true;retryAttempts=0;
    const hasConflict=pendingYears().some(year=>readYearRecord(year).conflict);
    setSyncStatus(hasConflict?'Konflikt – Klärung erforderlich':pendingYears().length?'Lokal gespeichert':'Synchronisiert',!pendingYears().length);
  }catch(e){
    cloudReady=false;
-   cloudDelay=Math.min(120000,Math.max(15000,cloudDelay*2));
-   setSyncStatus(navigator.onLine?'Sync-Fehler – erneuter Versuch …':'Offline – lokal gespeichert',false);
+   // Quota/access errors require a new user/network event, not an endless loop.
+   retry=navigator.onLine&&(!e.status||e.status===408||e.status>=500)&&retryAttempts<RETRY_DELAYS.length&&hasRetryableWork();
+   setSyncStatus(!navigator.onLine?'Offline – lokal gespeichert':retry?'Sync-Fehler – erneuter Versuch geplant':'Sync pausiert – bei Bedarf erneut abgleichen',false);
  }finally{
    syncInFlight=false;
-   const delay=cloudDelay||(syncAgain?350:5000);syncAgain=false;
-   if(navigator.onLine)cloudPoll=setTimeout(initCloud,delay);
+   const again=syncAgain;syncAgain=false;
+   if(retry)cloudRetryTimer=setTimeout(()=>initCloud(),RETRY_DELAYS[retryAttempts++]);
+   else if(again&&cloudReady&&navigator.onLine&&hasRetryableWork())queueCloudSave();
  }
 }
-addEventListener('online',()=>{if(IS_PRODUCTION_DEPLOYMENT)initCloud(true)});
-addEventListener('focus',()=>{if(IS_PRODUCTION_DEPLOYMENT&&!cloudDelay)initCloud(true)});
-document.addEventListener?.('visibilitychange',()=>{if(document.visibilityState==='visible'&&IS_PRODUCTION_DEPLOYMENT&&!cloudDelay)initCloud(true)});
-addEventListener('offline',()=>{clearTimeout(cloudPoll);cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false)});
+addEventListener('online',()=>initCloud(false,true));
+addEventListener('focus',()=>{if(!cloudRetryTimer)initCloud()});
+document.addEventListener?.('visibilitychange',()=>{if(document.visibilityState==='visible'&&!cloudRetryTimer)initCloud()});
+addEventListener('offline',()=>{clearTimeout(cloudRetryTimer);cloudRetryTimer=null;clearTimeout(cloudTimer);cloudTimer=null;cloudReady=false;setSyncStatus('Offline – lokal gespeichert',false)});
 function archivedYear(year){
  try{
    const raw=readYearRecord(year)?.state||JSON.parse(localStorage.getItem(YEAR_KEY_PREFIX+year)||'null');
@@ -475,7 +491,7 @@ function switchYear(year){
  save();
  const existing=archivedYear(year);
  const next=existing||freshYear(year);
- writeLocal(next);
+ writeLocal(next,undefined,existing&&!readYearRecord(year)?{cloudImportPending:true}:{});
  localStorage.setItem(ACTIVE_YEAR_KEY,String(year));
  s=next;
  saleDraft={cookie:0,horn:0,mixed:0};
@@ -483,7 +499,7 @@ function switchYear(year){
  compareYear=year-1;
  lastSavedSnapshot=deep(s);
  renderYearSelectors();render();
- if(IS_PRODUCTION_DEPLOYMENT&&!cloudDelay)initCloud(true);
+ if(IS_PRODUCTION_DEPLOYMENT)initCloud(true);
 }
 
 const $=id=>document.getElementById(id);

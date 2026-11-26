@@ -7,7 +7,9 @@
 <title>Weihnachtsmarkt Backen · V10.5.6 (Vorschau)</title>
 <link rel="stylesheet" href="style.css?v=1053">
 </head>
-<body>
+<body data-update-pending>
+<style>body[data-update-pending] > :not(#updateSafetyStatus):not(style){display:none!important}#updateSafetyStatus{margin:24px auto;max-width:600px;padding:20px;background:#fff;color:#48232a;border-radius:14px}#updateSafetyStatus a{display:inline-block;margin-top:12px}#updateSafetyStatus [hidden],#updateSafetyStatus[hidden]{display:none!important}</style>
+<section id="updateSafetyStatus" role="status"><h1>Lokale Daten werden gesichert</h1><p id="updateSafetyMessage">Bitte die App kurz geöffnet lassen. Das Update startet erst nach bestätigter Sicherung.</p><a id="previousRelease" hidden>Weiter mit V10.5.5</a></section>
 <header><div class="wrap head">
  <div><h1>🎄 Weihnachtsmarkt Backen</h1><p>Produktion, Verkauf und Kosten auf einen Blick</p></div>
  <div class="sync"><span class="dot"></span><span id="syncLabel">Lokaler Modus</span></div>
@@ -58,9 +60,25 @@
  <div class="card"><h2>➕ Energie nachtragen</h2><div class="muted">Falls die Stoppuhr einmal nicht genutzt wurde, kann eine Laufzeit minutengenau nachgetragen werden.</div><div class="row" style="margin-top:10px"><div class="c3 sm6"><label>Gerät</label><select id="logDevice"><option value="oven">Backofen</option><option value="iron">Hörncheneisen</option><option value="machine">Küchenmaschine</option><option value="stove">Herd</option></select></div><div class="c3 sm6"><label>Datum</label><input id="logDate" type="date"></div><div class="c2 sm6"><label>Startzeit</label><input id="logStart" type="time"></div><div class="c2 sm6"><label>Endzeit</label><input id="logEnd" type="time"></div><div class="c2 sm6" id="logIronCountWrap"><label>Anzahl Eisen</label><select id="logIronCount"></select></div><div class="c12"><button class="primary" id="addEnergyLog">+ Energiezeit eintragen</button></div></div><div class="sep"></div><div id="energyLogList"></div></div></div></section>
 <section class="page" id="settings"><div class="grid"><div class="card"><h2>⚙️ Einstellungen</h2><div class="yearbar"><div><label>Aktives Abrechnungsjahr</label><select id="activeYearSelect"></select></div><div><label>Vergleichsjahr im Dashboard</label><select id="compareYearSelect"></select></div></div><div class="sep"></div><div class="row"><div class="c4 sm12"><label>Jahr</label><input id="year" type="number" readonly></div><div class="c4 sm12"><label>Familie 1</label><input id="family1"></div><div class="c4 sm12"><label>Familie 2</label><input id="family2"></div><div class="legacy-energy-setting"><label>Strom €/kWh</label><input id="powerPrice" type="number" step=".001"></div></div><div class="sep legacy-energy-setting"></div><h3 class="legacy-energy-setting">Geräteleistung</h3><div class="row legacy-energy-setting"><div><label>🔥 Backofen (W)</label><input id="settingOvenWatts" type="number" min="0" step="1"></div><div><label>🧇 Je Hörncheneisen (W)</label><input id="settingIronWatts" type="number" min="0" step="1"></div><div><label>🥣 Küchenmaschine (W)</label><input id="settingMachineWatts" type="number" min="0" step="1"></div><div><label>🍳 Herd (W)</label><input id="settingStoveWatts" type="number" min="0" step="1"></div></div><div class="sep"></div><h3>Verkaufspreise je Eimer</h3><div class="row"><div class="c4 sm12"><label>🍪 Kekse (€)</label><input id="settingCookiePrice" type="number" step=".01" min="0"></div><div class="c4 sm12"><label>🧇 Hörnchen (€)</label><input id="settingHornPrice" type="number" step=".01" min="0"></div><div class="c4 sm12"><label>🍪🍫 ½/½ mit Schokolade (€)</label><input id="settingMixedPrice" type="number" step=".01" min="0"></div></div></div><div class="card"><h2>📱 Synchronisierung</h2><div class="syncpanel"><strong>Gemeinsamer Datenbestand</strong><p class="muted">Alle vier Handys werden automatisch mit demselben Arbeitsbereich verbunden. Eine manuelle Zuordnung ist nicht mehr erforderlich.</p><div class="actions"><button class="primary" id="copySyncLink" type="button">Freigabelink kopieren</button></div><div class="pill">Status: <span id="cloudStatus">Verbindung wird aufgebaut …</span></div><p class="muted" id="syncShareHint"></p></div></div><div class="card"><div class="actions"><button class="secondary" id="exportBtn">Daten sichern</button><details class="note"><summary>Gerätediagnose – dieses Handy</summary><p>Die Werte gelten nur für dieses Gerät. Andere Handys sind ohne ihren letzten bestätigten Bericht nicht vergleichbar.</p>
 <div class="row"><div class="c6 sm12"><label>Gerätename</label><input id="deviceDiagName" maxlength="60" placeholder="z. B. Küche"></div><div class="c6 sm12"><label>Familienzuordnung</label><select id="deviceDiagFamily"><option value="">Nicht zugeordnet</option><option value="family1">Familie 1 (Römer)</option><option value="family2">Familie 2 (Rusche)</option></select></div></div>
-<p>Version: <span id="deviceDiagVersion"></span><br>Cloud-Kontakt: <span id="deviceDiagContact"></span><br>Letzter bestätigter Abgleich: <span id="deviceDiagAck"></span><br><span id="deviceDiagStatus"></span></p></details><button class="secondary" id="exportDeviceBtn" type="button">Alle Jahre &amp; Offline-Journal sichern</button><button class="secondary" id="importBtn">Sicherung einlesen</button><button class="danger" id="resetAll">Alles löschen</button></div><input type="file" id="importFile" accept=".json" style="display:none"></div></div></section>
+<p>Version: <span id="deviceDiagVersion"></span><br>Cloud-Kontakt: <span id="deviceDiagContact"></span><br>Letzter bestätigter Abgleich: <span id="deviceDiagAck"></span><br><span id="deviceDiagStatus"></span></p></details><button class="secondary" id="syncNowBtn" type="button">Jetzt abgleichen</button><button class="secondary" id="exportCheckpointBtn" type="button">Sicherung vor dem Update exportieren</button><button class="secondary" id="exportDeviceBtn" type="button">Alle Jahre &amp; Offline-Journal sichern</button><button class="secondary" id="importBtn">Sicherung einlesen</button><button class="danger" id="resetAll">Alles löschen</button></div><input type="file" id="importFile" accept=".json" style="display:none"></div></div></section>
 </main><footer>V10.5.6 (Vorschau) · Gemeinsamer Datenbestand für alle vier Handys.</footer></div>
 <script src="reservations.js?v=work5"></script>
-<script>Promise.all(['app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','reservations-ui.txt'].map(f=>fetch(f+'?v=work5').then(r=>{if(!r.ok)throw new Error(f);return r.text()}))).then(parts=>Function(parts.join('\n'))()).catch(e=>{document.body.insertAdjacentHTML('beforeend','<div style="padding:20px;color:#982032;font-weight:800">App konnte nicht geladen werden. Bitte Seite neu laden.</div>');console.error(e)});</script>
+<script src="startup-checkpoint.js?v=work6"></script>
+<script>
+(async()=>{
+ const activate=await window.WMStartupCheckpoint.prepare();
+ const parts=await Promise.all(['app1.txt','app2.txt','app3.txt','app4.txt','app5.txt','reservations-ui.txt'].map(f=>fetch(f+'?v=work6').then(r=>{if(!r.ok)throw new Error(f);return r.text()})));
+ const run=Function(parts.join('\n'));
+ activate();
+ run();
+ document.querySelector('#updateSafetyStatus').hidden=true;
+ document.body.removeAttribute('data-update-pending');
+})().catch(error=>{
+ document.querySelector('#updateSafetyMessage').textContent='Das Update konnte nicht sicher gestartet werden. Die bisherige Version bleibt verfügbar. Bitte keine App-Daten löschen.';
+ const fallback=document.querySelector('#previousRelease');
+ fallback.href='/mobile-releases/10.5.5/index.html'+location.hash;fallback.hidden=false;
+ console.error(error);
+});
+</script>
 </body></html>
 

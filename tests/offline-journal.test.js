@@ -9,7 +9,7 @@ const backup = {year:2026,family1:'Römer',family2:'Rusche',purchaseEntries:[
   {id:'existing',buyerKey:'family1',total:4,receiptPhoto:'synthetic-photo-fixture'}
 ]};
 const year = backup.year;
-function phone(store, network) {
+function phone(store, network, runtime={}) {
   const label = {};
   const ctx = vm.createContext({
     Date, AbortSignal, URL, URLSearchParams, crypto:globalThis.crypto, Reservations:require('../reservations.js'),
@@ -18,7 +18,7 @@ function phone(store, network) {
     setTimeout(){return 1}, clearTimeout(){}, fetch:(...args)=>network(...args),
     localStorage:{get length(){return store.size},key:i=>[...store.keys()][i],getItem:k=>store.get(k)??null,
       setItem(k,v){if(store.fail&&k.startsWith('wm_backen_journal'))throw Error('Quota');store.set(k,v)}},
-    label, render(){}
+    label, render(){},...runtime
   });
   vm.runInContext(src+'\nconst $=()=>label;',ctx);
   return expr=>vm.runInContext(expr,ctx);
@@ -222,4 +222,41 @@ test('successful cloud reads report contact; errors do not claim a confirmed rev
  assert.equal(await p('getCloudStamp(2026)'),stamp);
  assert.ok(p('deviceDiagnostics.lastContactAt'));
  assert.equal(p('deviceDiagnostics.lastConfirmedAt'),undefined);
+});
+
+test('sync has no idle polling, no clean write, and reuses acknowledged revision after restart',async()=>{
+ const stamp='2026-11-20T12:00:00Z';
+ const observed=[];
+ const net=async(url,{method='GET'}={})=>{
+   const select=new URL(url).searchParams.get('select');observed.push([method,select]);
+   return {ok:true,text:async()=>JSON.stringify([select==='updated_at'?{updated_at:stamp}:{data:backup,updated_at:stamp}])};
+ };
+ const timerDelays=[];
+ const runtime={navigator:{onLine:true},setTimeout(_,ms){timerDelays.push(ms);return timerDelays.length},clearTimeout(){}};
+ const data=stored();
+ const p=phone(data,net,runtime);
+ p(`writeLocal(s,[])`);
+ await p('initCloud()');
+ assert.deepEqual(observed,[['GET','updated_at'],['GET','data,updated_at']]);
+ assert.deepEqual(timerDelays,[],'no periodic requests when idle');
+ observed.length=0;
+ await phone(data,net,runtime)('initCloud()');
+ assert.deepEqual(observed,[['GET','updated_at']],'unchanged data is not downloaded after restart');
+ assert.deepEqual(timerDelays,[]);
+});
+test('quota errors do not poll; transient failures retry only pending work, with a cap',async()=>{
+ const mem=stored(),timers=new Map();let counter=0,status=503;
+ const net=async()=>({ok:false,status,text:async()=>'unavailable'});
+ const runtime={navigator:{onLine:false},setTimeout(fn,ms){timers.set(++counter,{fn,ms});return counter},clearTimeout(id){timers.delete(id)}};
+ const p=phone(mem,net,runtime);add(p,'pending-before-error');
+ p('navigator.onLine=true');
+ await p('initCloud()');
+ assert.deepEqual([...timers.values()].map(x=>x.ms),[15000]);
+ for(const expected of [45000,120000,null]){
+   const [id,timer]=[...timers.entries()][0];timers.delete(id);await timer.fn();
+   assert.deepEqual([...timers.values()].map(x=>x.ms),expected===null?[]:[expected]);
+ }
+ status=402;await p('initCloud(true,true)');
+ assert.equal(timers.size,0,'no automatic retries for quota exhaustion');
+ assert.equal(p('readYearRecord(2026).pending.length'),1);
 });
