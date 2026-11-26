@@ -211,3 +211,15 @@ test('six-week-old local purchase edit survives restart, API rejection and delet
  assert.equal(saved.state.purchaseEntries[0].receiptPhoto,'synthetic-photo-fixture');
  assert.equal(saved.details[saved.pending[0]].at,'2026-10-14T00:00:00Z');
 });
+
+test('successful cloud reads report contact; errors do not claim a confirmed revision',async()=>{
+ let okay=false;const stamp='2026-11-20T12:00:00Z';
+ const net=async(url)=>({ok:okay,status:503,text:async()=>okay?JSON.stringify([new URL(url).searchParams.get('select')==='updated_at'?{updated_at:stamp}:{data:backup,updated_at:stamp}]):'unavailable'});
+ const mem=stored(),p=phone(mem,net);
+ await assert.rejects(p('getCloudStamp(2026)'),/503/);
+ assert.equal(p('deviceDiagnostics.lastConfirmedAt'),undefined);
+ okay=true;
+ assert.equal(await p('getCloudStamp(2026)'),stamp);
+ assert.ok(p('deviceDiagnostics.lastContactAt'));
+ assert.equal(p('deviceDiagnostics.lastConfirmedAt'),undefined);
+});

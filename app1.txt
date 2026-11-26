@@ -243,6 +243,17 @@ function queueCloudSave(){
  clearTimeout(cloudTimer);
  cloudTimer=setTimeout(()=>saveCloudState(),350);
 }
+const DEVICE_DIAG_KEY='wm_backen_device_diagnostics_v1';
+let deviceDiagnostics={};
+try{deviceDiagnostics=JSON.parse(localStorage.getItem(DEVICE_DIAG_KEY)||'{}')||{}}catch(_error){}
+let diagnosticsWrittenAt=0;
+function updateDeviceDiagnostics(values,force=false){
+ deviceDiagnostics={...deviceDiagnostics,...values};
+ const at=Date.now();
+ if(force||at-diagnosticsWrittenAt>=60000){
+   try{localStorage.setItem(DEVICE_DIAG_KEY,JSON.stringify(deviceDiagnostics));diagnosticsWrittenAt=at}catch(_error){}
+ }
+}
 async function cloudRequest(path,options={}){
  const headers=Object.assign({
    'apikey':SUPABASE_KEY,
@@ -252,7 +263,8 @@ async function cloudRequest(path,options={}){
  },options.headers||{});
  const r=await fetch(SUPABASE_URL+'/rest/v1/'+path,Object.assign({cache:'no-store',signal:AbortSignal.timeout(15000)},options,{headers}));
  if(!r.ok){const detail=await r.text();const error=new Error('Cloud '+r.status);error.status=r.status;error.detail=detail;throw error}
- const body=await r.text(); return body?JSON.parse(body):null;
+ const body=await r.text();const data=body?JSON.parse(body):null;
+ updateDeviceDiagnostics({lastContactAt:nowIso()});return data;
 }
 function newerStamp(a,b){return String(a||'')>=String(b||'')?a:b}
 function mergeStates(localRaw,cloudRaw,year,cloudStamp){
@@ -311,6 +323,7 @@ function setSyncStatus(label,ok){
  if(c)c.textContent=label;
  if(d)d.style.background=ok?'#76d39b':'#ffd36e';
  if(typeof globalThis.refreshSyncConflicts==='function')globalThis.refreshSyncConflicts();
+ if(typeof globalThis.renderDeviceDiagnostics==='function')globalThis.renderDeviceDiagnostics();
 }
 const cloudStamps=new Map();
 let cloudPoll=null, cloudDelay=0;
@@ -399,6 +412,7 @@ async function syncYear(year,retryConflict=false){
    }
    if(concurrent&&latest.state._sync?.lastLocalChange)next._sync.lastLocalChange=latest.state._sync.lastLocalChange;
    writeLocal(next,remaining,{conflict,details:Object.fromEntries(remaining.filter(id=>latest?.details?.[id]).map(id=>[id,latest.details[id]]))});
+   if(acknowledged&&!remaining.length)updateDeviceDiagnostics({lastConfirmedAt:nowIso(),confirmedYear:year,confirmedCloudRevision:acknowledged},true);
    if(Number(s.year)===year){s=next;lastSavedSnapshot=deep(s);requestBackgroundRender()}
    cloudStamps.set(year,acknowledged);
    return;

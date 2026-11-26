@@ -385,6 +385,31 @@ $('logDate').value=new Date().toISOString().slice(0,10);
 $('logDevice').onchange();
 
 $('exportBtn').onclick=()=>{const filename=`weihnachtsmarkt-backen-${s.year}.json`,json=JSON.stringify(s,null,2);if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}const b=new Blob([json],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=filename;a.click();URL.revokeObjectURL(a.href)};
+function deviceSnapshotData(){
+ const years=availableYears().flatMap(year=>{
+   const record=readYearRecord(year);
+   return record?[{year,pending:record.pending.length,conflict:record.conflict?.code||null,confirmed:deviceDiagnostics.confirmedYear===year?deviceDiagnostics.confirmedCloudRevision:null}]:[];
+ });
+ return {years,metadata:deep(deviceDiagnostics),version:document.title,online:navigator.onLine,
+   syncStatus:$('syncLabel')?.textContent||''};
+}
+globalThis.renderDeviceDiagnostics=()=>{
+ const status=$('deviceDiagStatus');if(!status)return;
+ try{
+   const d=deviceSnapshotData(), format=value=>value?new Date(value).toLocaleString('de-DE'):'Noch nicht erfasst';
+   const pending=d.years.reduce((v,y)=>v+y.pending,0),conflicts=d.years.filter(y=>y.conflict).length;
+   status.textContent=(d.online?'Netz verfügbar':'Offline – zuletzt bekannter Stand')+' · '+d.syncStatus+' · '+pending+' ausstehend · '+conflicts+' Jahre mit Konflikt';
+   $('deviceDiagVersion').textContent=d.version;
+   $('deviceDiagContact').textContent=format(d.metadata.lastContactAt);
+   $('deviceDiagAck').textContent=format(d.metadata.lastConfirmedAt)+(d.metadata.confirmedYear?' ('+d.metadata.confirmedYear+')':'');
+ }catch(_error){status.textContent='Lokales Journal kann nicht gelesen werden. Bitte Geräteexport sichern und Bestand prüfen.'}
+};
+$('deviceDiagName').value=deviceDiagnostics.name||'';
+$('deviceDiagFamily').value=deviceDiagnostics.family||'';
+$('deviceDiagName').addEventListener('input',e=>updateDeviceDiagnostics({name:e.target.value.trim()},true));
+$('deviceDiagFamily').addEventListener('change',e=>updateDeviceDiagnostics({family:e.target.value},true));
+renderDeviceDiagnostics();
+
 function exportDeviceSnapshot(){
  const storage={};
  for(let i=0;i<localStorage.length;i++){
@@ -394,14 +419,14 @@ function exportDeviceSnapshot(){
  // Document the exact locally persisted state without merging it into this or another device.
  const bundle={format:'wm-device-diagnostics-v1',exportedAt:nowIso(),deviceId:deviceId(),version:document.title,
    online:navigator.onLine,syncStatus:$('syncLabel')?.textContent||'',activeYear:s.year,
-   latestState:deep(s),storage};
+   latestState:deep(s),diagnostics:(()=>{try{return deviceSnapshotData()}catch(_){return {metadata:deep(deviceDiagnostics),unreadableJournal:true}}})(),storage};
  const filename='weihnachtsmarkt-geraetesicherung-'+localToday()+'.json',json=JSON.stringify(bundle);
  if(window.AndroidBridge?.saveJson){window.AndroidBridge.saveJson(filename,json);return}
  const url=URL.createObjectURL(new Blob([json],{type:'application/json'})),link=document.createElement('a');
  link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 $('exportDeviceBtn').onclick=exportDeviceSnapshot;
-$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text());if(parsed?.format==='wm-device-diagnostics-v1'){alert('Dieser Geräteexport enthält mehrere Jahre und das Offline-Journal. Nicht als einzelnes Abrechnungsjahr importieren.');return}const payload=parsed?.backupFormat&&parsed?.data?parsed.data:parsed;const incoming=normalizeState(payload,s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
+$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=async e=>{try{const parsed=JSON.parse(await e.target.files[0].text());if(['wm-device-diagnostics-v1','wm-supabase-app-state-v1','wm-supabase-separate-workspaces-v1'].includes(parsed?.format)){alert('Dieser Geräteexport enthält mehrere Jahre und das Offline-Journal. Nicht als einzelnes Abrechnungsjahr importieren.');return}const payload=parsed?.backupFormat&&parsed?.data?parsed.data:parsed;const incoming=normalizeState(payload,s.year,nowIso());s=mergeStates(s,incoming,s.year,nowIso());save();render();alert('Sicherung wurde mit den vorhandenen Daten zusammengeführt.')}catch{alert('Datei konnte nicht gelesen werden.')}};
 $('copySyncLink').onclick=async()=>{
  const link=workspaceShareUrl(),hint=$('syncShareHint');
  try{await navigator.clipboard.writeText(link);hint.textContent='Freigabelink kopiert – jetzt auf dem zweiten Handy öffnen.'}
